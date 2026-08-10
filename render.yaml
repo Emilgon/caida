@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: caida-server
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      # Se define en el dashboard de Render con la URL real del cliente en Vercel.
+      # Acepta varias separadas por coma (produccion + previews).
+      - key: CLIENT_ORIGIN
+        sync: false
