@@ -103,3 +103,21 @@ Se reparte de nuevo (rota el repartidor) hasta que alguien llegue a la meta.
 El "trivilín de tres 12" (gana la partida entera de un golpe) y el
 "zapatero" (pagar doble si terminas en 0, viene de apuestas con dinero real)
 no están implementados. Se agregan después si se extrañan jugando.
+
+## Sin confirmar todavía (NO asumir, preguntarle a Emilio)
+
+Estas tres quedaron abiertas en la planeación — a diferencia del resto de
+este documento, todavía no tienen una respuesta de Emilio. El motor debe
+tomar una decisión explícita y documentada para poder avanzar, pero hay que
+marcarla como "supuesto, a confirmar jugando" en el código, no darla por
+definitiva:
+
+1. **Caída con mesa**: cuando dice "5 puntos", ¿son 5 puntos FIJOS en vez de
+   los de la caída normal, o son los puntos de la caída MÁS 5 extra por
+   dejar la mesa vacía?
+2. **Composición de Patrulla**: la escalera de 3 consecutivas, ¿tiene que
+   ser del mismo palo, o cualquier palo vale?
+3. **Una carta que pertenece a más de un canto a la vez** (ej: parte de una
+   Ronda y también de una Patrulla en la misma mano de 3 cartas): ¿el
+   jugador elige cuál de los dos declarar al jugarla, o se declaran los dos
+   si la carta encaja en ambos?
