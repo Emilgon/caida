@@ -30,19 +30,9 @@
   border-radius: inherit;
 }
 
-/* El dibujo de respaldo solo aparece si la imagen no cargó. */
-.carta-respaldo {
-  display: none;
-  position: absolute;
-  inset: 0;
-}
-
-.carta-sin-imagen .carta-img {
-  display: none;
-}
-
-.carta-sin-imagen .carta-respaldo {
-  display: block;
+.carta-dorso-marca {
+  font: 700 30px/1 var(--fuente-titulo);
+  letter-spacing: 0.02em;
 }
 
 .carta-indice {
@@ -86,9 +76,10 @@
   }
 }
 
-/* No es tu turno, o esa carta no hace nada. */
+/* No es tu turno. Se apaga lo justo para que se note, sin dejarlas grises:
+   con cartas de verdad, quitarles el color las mata. */
 .carta-apagada {
-  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.4)) saturate(0.5) brightness(0.78);
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.4)) brightness(0.88);
   cursor: default;
 }
 

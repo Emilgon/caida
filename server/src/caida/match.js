@@ -637,6 +637,14 @@ export function publicStateFor(match, seat) {
       ),
       cardsLeft: hand.hands.map((cards) => cards.length),
       capturedCount: hand.captured.map((cards) => cards.length),
+      // Cartas capturadas por equipo y el umbral que tienen que pasar. Va
+      // aqui y no en el cliente para no repetir la regla de los umbrales.
+      teamCards: match.teams.map((seats) =>
+        seats.reduce((sum, s) => sum + hand.captured[s].length, 0),
+      ),
+      teamThreshold: match.teams.map((seats) =>
+        seats.reduce((sum, s) => sum + cardThreshold(match.players, s, hand.dealer), 0),
+      ),
       deckLeft: hand.deck.length,
       lastPlayed: hand.lastPlayed ? { ...hand.lastPlayed } : null,
       lastCapturer: hand.lastCapturer,

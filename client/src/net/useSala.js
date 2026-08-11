@@ -128,6 +128,7 @@ export function useSala() {
       empezar: () => pedir('sala:empezar'),
       revancha: () => pedir('sala:revancha'),
       jugar: (move) => pedir('juego:jugada', { move }),
+      contado: () => pedir('juego:contado'),
       cancelar: () => pedir('sala:cancelar'),
       salir: () => pedir('sala:salir'),
     }),

@@ -15,3 +15,6 @@ Thumbs.db
 .vscode/
 .idea/
 .render-check/
+
+# Capturas del script de revision visual
+client/capturas/

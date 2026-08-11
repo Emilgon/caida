@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import { DIBUJOS, PALOS } from './palos.jsx'
 import { FIGURAS } from './figuras.jsx'
 import './carta.css'
@@ -128,8 +130,9 @@ function Esquina({ palo, valor, invertida }) {
   )
 }
 
-/** El dibujo de respaldo, por si falta la imagen. */
-function CartaDibujada({ carta }) {
+/** El dibujo de respaldo, por si falta la imagen. Exportado para poder
+ *  probarlo sin depender de que una imagen falle. */
+export function CartaDibujada({ carta }) {
   const { suit: palo, value: valor } = carta
   return (
     <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="carta-svg">
@@ -142,11 +145,62 @@ function CartaDibujada({ carta }) {
   )
 }
 
+/** El reverso dibujado, por si falta `reverso.png`. */
+function DorsoDibujado() {
+  return (
+    <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="carta-svg" aria-hidden="true">
+      <rect x="0" y="0" width={ANCHO} height={ALTO} rx="8" fill="#7b1f1c" />
+      <rect x="5" y="5" width={ANCHO - 10} height={ALTO - 10} rx="5" fill="#96302a" />
+      <rect
+        x="5"
+        y="5"
+        width={ANCHO - 10}
+        height={ALTO - 10}
+        rx="5"
+        fill="none"
+        stroke="#e8c98a"
+        strokeWidth="1.6"
+        opacity="0.7"
+      />
+      <g stroke="#e8c98a" strokeWidth="0.9" opacity="0.35">
+        {Array.from({ length: 22 }, (_, i) => (
+          <line key={`a${i}`} x1={-60 + i * 12} y1="0" x2={20 + i * 12} y2={ALTO} />
+        ))}
+        {Array.from({ length: 22 }, (_, i) => (
+          <line key={`b${i}`} x1={20 + i * 12} y1="0" x2={-60 + i * 12} y2={ALTO} />
+        ))}
+      </g>
+      <circle cx={ANCHO / 2} cy={ALTO / 2} r="26" fill="#7b1f1c" stroke="#e8c98a" strokeWidth="1.6" />
+      <text
+        x={ANCHO / 2}
+        y={ALTO / 2 + 1}
+        className="carta-dorso-marca"
+        fill="#e8c98a"
+        textAnchor="middle"
+        dominantBaseline="middle"
+      >
+        C
+      </text>
+    </svg>
+  )
+}
+
 /** El reverso: es lo que se ve en las manos ajenas y en el mazo. */
 export function Dorso({ className = '', style }) {
+  const [falla, setFalla] = useState(false)
   return (
     <div className={`carta carta-dorso ${className}`} style={style}>
-      <img src="/cartas/reverso.png" alt="" className="carta-img" draggable="false" />
+      {falla ? (
+        <DorsoDibujado />
+      ) : (
+        <img
+          src="/cartas/reverso.png"
+          alt=""
+          className="carta-img"
+          draggable="false"
+          onError={() => setFalla(true)}
+        />
+      )}
     </div>
   )
 }
@@ -170,6 +224,9 @@ export default function Carta({
   const { suit: palo, value: valor } = carta
   const interactiva = typeof onClick === 'function'
   const Etiqueta = interactiva ? 'button' : 'div'
+  // En estado, no tocando la clase a mano: React reescribe className en cada
+  // render y se llevaría por delante cualquier clase puesta desde fuera.
+  const [falla, setFalla] = useState(false)
 
   return (
     <Etiqueta
@@ -191,19 +248,17 @@ export default function Carta({
       title={title}
       aria-label={`${valor} de ${PALOS[palo].nombre}`}
     >
-      <img
-        src={rutaDe(carta)}
-        alt=""
-        className="carta-img"
-        draggable="false"
-        onError={(e) => {
-          // Falta la imagen: se cambia al dibujo y no se vuelve a intentar.
-          e.currentTarget.closest('.carta')?.classList.add('carta-sin-imagen')
-        }}
-      />
-      <span className="carta-respaldo" aria-hidden="true">
+      {falla ? (
         <CartaDibujada carta={carta} />
-      </span>
+      ) : (
+        <img
+          src={rutaDe(carta)}
+          alt=""
+          className="carta-img"
+          draggable="false"
+          onError={() => setFalla(true)}
+        />
+      )}
     </Etiqueta>
   )
 }

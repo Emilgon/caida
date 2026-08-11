@@ -120,6 +120,20 @@ cd client && npm test    # las pantallas, dibujadas contra partidas reales
   salidas del motor, incluida la comprobación de que el tablero nunca pinta
   una carta que no deberías estar viendo.
 
+### Mirar la pantalla de verdad
+
+Los tests no ven la maquetación. Para eso:
+
+```bash
+cd client
+npm run mirar              # 1920, 1366 y celular
+npm run mirar -- 1600x900  # un tamaño concreto
+```
+
+Abre el juego en el Edge que ya está instalado (sin descargar navegador),
+juega contra los bots, guarda capturas en `client/capturas/` y avisa de todo
+lo que se salga de la pantalla. Necesita el servidor y el cliente corriendo.
+
 ## Correr en local
 
 Necesitas dos terminales.

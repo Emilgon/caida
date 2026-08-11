@@ -85,6 +85,15 @@ async function ok(player, event, payload) {
 }
 
 /**
+ * Juega un movimiento. Si era repartir, avisa ademas de que ya se conto la
+ * mesa: hasta ese aviso no puede jugar nadie, igual que en la mesa de verdad.
+ */
+async function jugar(player, move) {
+  await ok(player, "juego:jugada", { move });
+  if (move?.type === "repartir") await ok(player, "juego:contado");
+}
+
+/**
  * Espera a que el estado termine de llegar a todos y devuelve a quien le toca,
  * o `null` si la partida acabo. De paso comprueba la invariante que mas
  * importa: en cada momento hay EXACTAMENTE un jugador con jugadas legales.
@@ -189,7 +198,7 @@ describe("salas por socket", () => {
       assert.ok(moves < 4000, "la partida no termina");
 
       const [move] = actor.state.game.legalMoves;
-      await ok(actor, "juego:jugada", { move });
+      await jugar(actor, move);
       await turnOf(players);
 
       // Contra la verdad del servidor: lo que le llego a cada quien no puede
@@ -244,9 +253,7 @@ describe("salas por socket", () => {
 
     // Reparte quien toque, para que la mano ya tenga cartas repartidas.
     const dealerSeat = s.store.find(code).match.dealer;
-    await ok(players[dealerSeat], "juego:jugada", {
-      move: { type: "repartir", first: "manos", direction: "ascendente" },
-    });
+    await jugar(players[dealerSeat], { type: "repartir", first: "manos", direction: "ascendente" });
     await until(() => players[1].state.game?.hand !== null, "reparto");
 
     const ana = players[1];
@@ -315,6 +322,60 @@ describe("salas por socket", () => {
     assert.equal(players[1].state.room.seats[1].host, true);
   });
 
+  it("nadie juega mientras se cuentan las cartas de la mesa", async () => {
+    const s = await server();
+    const { code, host, players } = await tableOf(s, ["Emilio", "Ana"]);
+    await ok(host, "sala:empezar");
+    await until(() => host.state.room.phase === "jugando", "arranque");
+
+    const repartidor = players[s.store.find(code).match.dealer];
+    await ok(repartidor, "juego:jugada", {
+      move: { type: "repartir", first: "manos", direction: "ascendente" },
+    });
+    await until(() => players.every((p) => p.state.room.contando !== null), "que se cuente la mesa");
+
+    // Ni el que reparte ni el otro pueden jugar todavia.
+    for (const player of players) {
+      const carta = player.state.game?.hand?.myCards?.[0];
+      if (!carta) continue;
+      const negado = await send(player, "juego:jugada", {
+        move: { type: "jugar", card: carta.id },
+      });
+      assert.equal(negado.ok, false);
+      assert.equal(negado.error.code, "CONTANDO_LA_MESA");
+    }
+
+    // Solo quien reparte puede dar la mesa por puesta.
+    const otro = players.find((p) => p !== repartidor);
+    const ajeno = await send(otro, "juego:contado");
+    assert.equal(ajeno.error.code, "NO_REPARTES_TU");
+
+    await ok(repartidor, "juego:contado");
+    await until(() => players.every((p) => p.state.room.contando === null), "que suelte la mesa");
+
+    const actor = await turnOf(players);
+    assert.ok(actor, "ya deberia poder jugar alguien");
+  });
+
+  it("un bot que reparte cuenta la mesa y despues suelta el juego", async () => {
+    // Con retardo 0 el bot iria instantaneo; aqui interesa que el conteo se
+    // vea, asi que le damos su tiempo.
+    const s = await server({ botDelay: 40 });
+    const yo = await s.client("Emilio");
+    const { code } = await ok(yo, "sala:crear", { name: "Emilio", players: 2 });
+    await ok(yo, "sala:bot-agregar");
+    await until(() => yo.state.room.full, "bot sentado");
+    await ok(yo, "sala:empezar");
+
+    // Si reparte el bot, la mesa se cuenta sola y el juego arranca despues.
+    if (s.store.find(code).match.dealer === 1) {
+      await until(() => yo.state.room.contando !== null, "que el bot reparta");
+      assert.equal(yo.state.room.contando.seat, 1);
+      await until(() => yo.state.room.contando === null, "que el bot acabe de contar");
+    }
+    assert.equal(s.store.find(code).match.phase, "juego");
+  });
+
   it("una mesa de 4 contra los tres bots, con parejas", async () => {
     const s = await server();
     const yo = await s.client("Emilio");
@@ -345,7 +406,7 @@ describe("salas por socket", () => {
       if (yo.state.room.phase === "terminada") break;
       turnos += 1;
       assert.ok(turnos < 2000, "la partida no termina");
-      await ok(yo, "juego:jugada", { move: yo.state.game.legalMoves[0] });
+      await jugar(yo, yo.state.game.legalMoves[0]);
     }
 
     const truth = s.store.find(code);
@@ -379,7 +440,7 @@ describe("salas por socket", () => {
         "mi turno",
       );
       if (yo.state.room.phase === "terminada") break;
-      await ok(yo, "juego:jugada", { move: yo.state.game.legalMoves[0] });
+      await jugar(yo, yo.state.game.legalMoves[0]);
     }
     assert.notEqual(s.store.find(code).match.winner, null);
   });
@@ -408,7 +469,7 @@ describe("salas por socket", () => {
           }
         }
       }
-      await ok(yo, "juego:jugada", { move: yo.state.game.legalMoves[0] });
+      await jugar(yo, yo.state.game.legalMoves[0]);
     }
   });
 
@@ -444,7 +505,7 @@ describe("salas por socket", () => {
     // Terminamos la partida jugando hasta el final.
     let actor;
     while ((actor = await turnOf(players)) !== null) {
-      await ok(actor, "juego:jugada", { move: actor.state.game.legalMoves[0] });
+      await jugar(actor, actor.state.game.legalMoves[0]);
     }
 
     const negada = await send(players[1], "sala:revancha");

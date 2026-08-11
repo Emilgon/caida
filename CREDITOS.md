@@ -17,13 +17,24 @@ cd client
 npm run cartas
 ```
 
-Va despacio a propósito —Commons corta las descargas apuradas con un 429— y
-es reanudable: si se interrumpe, se vuelve a lanzar y sigue donde iba. Son 41
-archivos, las 40 cartas más el reverso, en `{palo}-{valor}.png`.
+Son 41 archivos —las 40 cartas más el reverso— en `{palo}-{valor}.png`, unos
+1,9 MB en total.
+
+El script **no le pregunta nada a la API** de Commons: la ruta de cada archivo
+sale del MD5 de su nombre, así que son 41 descargas y ni una llamada de más.
+Preguntar carta por carta era justo lo que hacía saltar el límite de peticiones
+y dejaba la baraja a medias. Aun así va con calma y es reanudable: si se
+interrumpe, se vuelve a lanzar y sigue donde iba.
 
 Si falta alguno, esa carta se dibuja en SVG dentro del propio código en vez de
 salir rota. El dibujo no es tan bonito, pero una carta rota no se puede ni
 leer, y así el juego nunca se queda a medias.
+
+> Existe una versión en SVG de esta misma baraja
+> ([gjenkins20/spanish-playing-cards-svg](https://github.com/gjenkins20/spanish-playing-cards-svg)),
+> pero está vectorizada a lo bruto: **1,8 MB por carta y 11 MB el reverso**,
+> más de 80 MB en total. Descartada para web. Los PNG originales pesan 1,9 MB
+> entre las 41.
 
 **Qué obliga la licencia**: hay que dar crédito a los autores y decir la
 licencia — esto que estás leyendo. Y si se modifican las imágenes, hay que

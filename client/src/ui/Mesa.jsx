@@ -201,7 +201,10 @@ export default function Mesa({ room, game, acciones, onSalir }) {
       return
     }
     sonido.carta()
-    setReparto((p) => ({ ...p, revelados: Math.min(4, p.revelados + 1) }))
+    const puestas = Math.min(4, reparto.revelados + 1)
+    setReparto((p) => ({ ...p, revelados: puestas }))
+    // Con las cuatro en la mesa se avisa al servidor y ahí empieza el juego.
+    if (puestas === 4) await acciones.contado()
   }
 
   const asientos = useMemo(
@@ -450,6 +453,11 @@ export default function Mesa({ room, game, acciones, onSalir }) {
       {yoCuento && contando && reparto.direction !== null && (
         <div className="mesa-instruccion">
           Sigue contando: toca el <strong>{SECUENCIA[reparto.direction][reparto.revelados]}</strong>
+        </div>
+      )}
+      {!yoCuento && room.contando && (
+        <div className="mesa-instruccion">
+          {nombre(room.contando.seat)} está poniendo la mesa…
         </div>
       )}
 

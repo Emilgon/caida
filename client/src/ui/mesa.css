@@ -2,8 +2,8 @@
    En celular se reordena a una columna sin que haya que hacer scroll. */
 
 .mesa {
-  --carta-alto: clamp(110px, 15vh, 178px);
-  --carta-mano: clamp(130px, 20vh, 230px);
+  --carta-alto: clamp(120px, 21vh, 240px);
+  --carta-mano: clamp(150px, 27vh, 300px);
   height: 100svh;
   display: grid;
   grid-template-rows: auto 1fr auto;
@@ -96,6 +96,31 @@
   font-size: 1.35rem;
   font-weight: 700;
   color: var(--oro);
+}
+
+/* Cartas capturadas por la pareja: un solo número para los dos. */
+.marcador-cartas {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.1rem;
+  padding-left: 0.5rem;
+  margin-left: 0.15rem;
+  border-left: 1px solid rgb(224 180 88 / 0.25);
+  font-size: 0.86rem;
+  color: rgb(246 239 221 / 0.7);
+  white-space: nowrap;
+}
+
+.marcador-cartas small {
+  font-size: 0.72rem;
+  opacity: 0.6;
+}
+
+/* Ya pasaron el umbral: de aquí en adelante cada carta es un punto. */
+.marcador-cartas-arriba {
+  color: var(--verde-vivo);
+  font-weight: 700;
 }
 
 /* --- Paño ---------------------------------------------------------------- */

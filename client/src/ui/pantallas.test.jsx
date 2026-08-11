@@ -7,13 +7,14 @@ import {
   applyGameMove,
   createRoom,
   currentSeat,
+  endCount,
   gameViewFor,
   publicRoom,
   startMatch,
 } from '../../../server/src/rooms/room.js'
 import { chooseMove } from '../../../server/src/bots/policy.js'
 
-import Carta, { Dorso } from '../cartas/Carta.jsx'
+import Carta, { CartaDibujada, Dorso } from '../cartas/Carta.jsx'
 import Jugador from './Jugador.jsx'
 import Marcador from './Marcador.jsx'
 import Mesa from './Mesa.jsx'
@@ -39,6 +40,8 @@ function mesaConBots(players, jugadas = 0) {
     if (seat === null) break
     const vista = gameViewFor(room, room.seats[seat].id)
     room = applyGameMove(room, { playerId: room.seats[seat].id, move: chooseMove(vista) })
+    // Tras repartir, la mesa se cuenta y nadie juega hasta que acabe.
+    if (room.contando) room = endCount(room, { playerId: room.seats[room.contando.seat].id })
   }
   return room
 }
@@ -54,13 +57,32 @@ function pintarMesa(room) {
   )
 }
 
-describe('las cartas se dibujan', () => {
-  it('las 40 cartas de la baraja, sin reventar', () => {
+describe('las cartas', () => {
+  it('las 40 piden su imagen y se anuncian bien', () => {
     for (const suit of ['oros', 'copas', 'espadas', 'bastos']) {
       for (const value of [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]) {
         const html = renderToStaticMarkup(<Carta carta={{ id: `${suit}-${value}`, suit, value }} />)
-        assert.ok(html.includes('<svg'), `${suit}-${value} no pintó`)
+        assert.ok(html.includes(`/cartas/${suit}-${value}.png`), `${suit}-${value} sin imagen`)
         assert.ok(html.includes(`${value} de`), `${suit}-${value} sin etiqueta accesible`)
+      }
+    }
+  })
+
+  it('el reverso pide su imagen y no deja ver ningún palo', () => {
+    const html = renderToStaticMarkup(<Dorso />)
+    assert.ok(html.includes('/cartas/reverso.png'))
+    assert.ok(!/oros-|copas-|espadas-|bastos-/.test(html))
+  })
+})
+
+describe('el dibujo de respaldo, para cuando falta la imagen', () => {
+  it('dibuja las 40 sin reventar', () => {
+    for (const suit of ['oros', 'copas', 'espadas', 'bastos']) {
+      for (const value of [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]) {
+        const html = renderToStaticMarkup(
+          <CartaDibujada carta={{ id: `${suit}-${value}`, suit, value }} />,
+        )
+        assert.ok(html.includes('<svg'), `${suit}-${value} no pintó`)
       }
     }
   })
@@ -68,17 +90,15 @@ describe('las cartas se dibujan', () => {
   it('cada palo corta el marco un número distinto de veces', () => {
     // Ésa es la pinta: se reconoce el palo por los cortes del borde.
     const lineas = (suit) =>
-      (renderToStaticMarkup(<Carta carta={{ id: `${suit}-5`, suit, value: 5 }} />).match(/<line/g) ?? [])
-        .length
+      (
+        renderToStaticMarkup(<CartaDibujada carta={{ id: `${suit}-5`, suit, value: 5 }} />).match(
+          /<line/g,
+        ) ?? []
+      ).length
 
     assert.ok(lineas('copas') > lineas('oros'), 'copas debería cortar más que oros')
     assert.ok(lineas('espadas') > lineas('copas'), 'espadas más que copas')
     assert.ok(lineas('bastos') > lineas('espadas'), 'bastos más que espadas')
-  })
-
-  it('el reverso no deja ver nada', () => {
-    const html = renderToStaticMarkup(<Dorso />)
-    assert.ok(!/oros|copas|espadas|bastos/.test(html))
   })
 })
 
@@ -125,8 +145,14 @@ describe('el tablero se dibuja', () => {
       const html = pintarMesa(room)
       assert.ok(html.includes('Emilio'))
       assert.ok(html.includes('Odaa'))
-      // Se ven cartas en la mesa o en mi mano.
-      assert.ok(html.includes('<svg'))
+
+      // Se ven mis cartas y las de la mesa, y solo ésas.
+      const vista = gameViewFor(room, 'yo')
+      const deberian = [...vista.hand.myCards, ...vista.hand.table].map((c) => c.id)
+      for (const id of deberian) {
+        assert.ok(html.includes(`/cartas/${id}.png`), `falta ${id} en pantalla`)
+      }
+      assert.ok(html.includes('/cartas/reverso.png'), 'falta el mazo o las manos ajenas')
     })
   }
 
@@ -139,13 +165,13 @@ describe('el tablero se dibuja', () => {
     for (let seat = 1; seat < 4; seat += 1) {
       for (const carta of room.match.hand.hands[seat]) {
         if (mias.has(carta.id) || enMesa.has(carta.id)) continue
-        assert.ok(
-          !html.includes(`${carta.value} de`) || true, // la etiqueta se repite entre palos
-          'placeholder',
-        )
-        // Lo que de verdad importa: el id no aparece en ningún atributo.
         assert.ok(!html.includes(carta.id), `el tablero pintó ${carta.id} del asiento ${seat}`)
       }
+    }
+    // Y del mazo tampoco sale nada.
+    for (const carta of room.match.hand.deck) {
+      if (mias.has(carta.id) || enMesa.has(carta.id)) continue
+      assert.ok(!html.includes(carta.id), `el tablero pintó ${carta.id}, que está en el mazo`)
     }
   })
 
@@ -156,6 +182,7 @@ describe('el tablero se dibuja', () => {
       const seat = currentSeat(room)
       const vista = gameViewFor(room, room.seats[seat].id)
       room = applyGameMove(room, { playerId: room.seats[seat].id, move: chooseMove(vista) })
+      if (room.contando) room = endCount(room, { playerId: room.seats[room.contando.seat].id })
     }
     const html = pintarMesa(room)
     assert.ok(/¡Ganaste!|Perdiste/.test(html))

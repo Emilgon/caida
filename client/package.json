@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "cartas": "node scripts/bajar-baraja.mjs public/cartas"
+    "cartas": "node scripts/bajar-baraja.mjs public/cartas",
+    "mirar": "node scripts/mirar.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -21,6 +22,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "playwright-core": "^1.62.1",
     "vite": "^8.2.0",
     "vitest": "^4.1.10"
   }

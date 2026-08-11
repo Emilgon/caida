@@ -5,6 +5,7 @@ import {
   addBot,
   applyGameMove,
   disconnectPlayer,
+  endCount,
   gameViewFor,
   joinRoom,
   moveSeat,
@@ -197,6 +198,17 @@ export function registerRoomHandlers(io, { store, seedFor, botDelay } = {}) {
           playerId: socket.data.playerId,
           move: payload.move,
         });
+        await publish(room);
+        reply(ack, { ok: true });
+      } catch (error) {
+        fail(ack, error);
+      }
+    });
+
+    // El repartidor ya puso las cuatro cartas: se suelta el juego.
+    socket.on("juego:contado", async (_payload = {}, ack) => {
+      try {
+        const room = endCount(roomOf(socket), { playerId: socket.data.playerId });
         await publish(room);
         reply(ack, { ok: true });
       } catch (error) {

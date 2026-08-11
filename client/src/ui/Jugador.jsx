@@ -18,7 +18,6 @@ export default function Jugador({
   if (!puesto || puesto.empty) return null
   const { seat, name, bot, connected, you } = puesto
   const enMano = game?.hand?.cardsLeft?.[seat] ?? 0
-  const capturadas = game?.hand?.capturedCount?.[seat] ?? 0
   const mios = cantos.filter((canto) => canto.seat === seat)
 
   return (
@@ -56,8 +55,9 @@ export default function Jugador({
           {bot && <span className="etiqueta etiqueta-bot">Bot</span>}
         </span>
         <span className="jugador-cuentas">
+          {/* Las capturadas no van aquí: son de la pareja, y salen en el
+              marcador con un solo número para los dos. */}
           <span title="Cartas en la mano">✋ {enMano}</span>
-          <span title="Cartas capturadas">🂠 {capturadas}</span>
         </span>
         {!connected && <span className="jugador-aviso">Sin conexión…</span>}
         {mios.length > 0 && (
