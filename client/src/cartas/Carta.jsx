@@ -206,9 +206,11 @@ export function Dorso({ className = '', style }) {
   )
 }
 
-// El vuelo de una carta: rápido, con un punto de rebote, como cuando alguien
-// la suelta de verdad sobre el paño. Sin esto las cartas se teletransportan.
-export const VUELO = { type: 'spring', stiffness: 420, damping: 34, mass: 0.9 }
+// El vuelo de una carta. Lento a propósito: el juego iba tan rápido que no
+// daba tiempo a ver qué pasaba. Ni tanto que aburra, pero que se VEA.
+export const VUELO = { type: 'spring', stiffness: 150, damping: 22, mass: 1.15 }
+// Lo que tarda una carta en irse al montón de quien la capturó.
+export const RETIRADA = { duration: 0.55, ease: [0.4, 0, 0.6, 1] }
 
 /**
  * Una carta boca arriba.

@@ -110,11 +110,23 @@ describe("el bot decide", () => {
     assert.equal(chooseMove(publicStateFor(match, 1), quieto), null);
   });
 
-  it("reparte eligiendo una de las cuatro combinaciones", () => {
+  it("reparte eligiendo si echa antes las manos o la mesa", () => {
     const match = { ...scenario({ turn: 0 }), phase: "reparto", hand: null, dealer: 0 };
     const move = chooseMove(publicStateFor(match, 0), quieto);
     assert.equal(move.type, "repartir");
     assert.ok(["manos", "mesa"].includes(move.first));
-    assert.ok(["ascendente", "descendente"].includes(move.direction));
+  });
+
+  it("cuenta la mesa cantando el numero que toca", () => {
+    const match = scenario({ turn: 0, dealer: 0 });
+    match.phase = "contando";
+    match.hand.contadas = 0;
+    match.hand.aciertos = [];
+    match.hand.direction = null;
+    match.hand.table = cards("oros-1", "copas-2", "espadas-3", "bastos-4");
+
+    const abre = chooseMove(publicStateFor(match, 0), quieto);
+    assert.equal(abre.type, "contar");
+    assert.ok([1, 4].includes(abre.numero), "solo puede abrir por el 1 o el 4");
   });
 });

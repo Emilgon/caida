@@ -67,8 +67,9 @@ export function chooseMove(view, random = Math.random) {
   const options = view.legalMoves;
   if (!options || options.length === 0) return null;
 
-  // Repartir: sin ver el mazo no hay forma de elegir mejor que al azar.
-  if (options[0].type === "repartir") {
+  // Repartir y contar la mesa: sin ver el mazo no hay forma de elegir mejor
+  // que al azar, igual que una persona.
+  if (options[0].type === "repartir" || options[0].type === "contar") {
     return options[Math.floor(random() * options.length)];
   }
 

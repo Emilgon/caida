@@ -64,27 +64,16 @@ export function missingPlayers(room) {
     .map((seat) => ({ name: seat.name, left: seat.left }));
 }
 
-// Cuanto se le aguanta al repartidor contando la mesa antes de soltar el
-// juego solo. Es una red de seguridad: si cierra la pestana a mitad del
-// conteo, la mesa no se queda congelada para siempre.
-export const CONTEO_MS = 25_000;
-
-/**
- * Mientras el repartidor pone las cuatro cartas cantando "una, dos, tres,
- * cuatro", nadie juega. Es asi en la mesa de verdad, y sin esto un bot tira
- * su carta a media cuenta y se lleva por delante el reparto.
- */
-export function contandoMesa(room, now = Date.now()) {
-  if (!room.contando) return false;
-  return now - room.contando.desde < CONTEO_MS;
-}
 
 /** A quien le toca actuar ahora mismo, o `null` si no hay nada que hacer. */
-export function currentSeat(room, now = Date.now()) {
+export function currentSeat(room) {
   if (room.phase !== "jugando" || !room.match || room.match.winner !== null) return null;
   if (isPaused(room)) return null;
-  if (contandoMesa(room, now)) return null;
-  return room.match.phase === "reparto" ? room.match.dealer : room.match.hand.turn;
+  const match = room.match;
+  if (match.phase === "reparto") return match.dealer;
+  // Contando la mesa manda el repartidor, no el que tiene el turno.
+  if (match.phase === "contando") return match.hand.dealer;
+  return match.hand.turn;
 }
 
 export function isBotSeat(room, seat) {
@@ -107,7 +96,6 @@ export function createRoom({ code, hostId, hostName, players = 4, target = 24, m
     seats,
     phase: "sala",
     match: null,
-    contando: null,
     pausedAt: null,
     cancelVotes: [],
     createdAt: now,
@@ -285,7 +273,6 @@ export function startMatch(room, { hostId, seed, now = Date.now() }) {
   const next = structuredClone(room);
   next.match = createMatch({ ...room.config, seed });
   next.phase = "jugando";
-  next.contando = null;
   next.pausedAt = null;
   next.cancelVotes = [];
   next.updatedAt = now;
@@ -305,7 +292,6 @@ export function rematch(room, { hostId, seed, now = Date.now() }) {
   const next = structuredClone(room);
   next.match = createMatch({ ...room.config, seed });
   next.phase = "jugando";
-  next.contando = null;
   next.pausedAt = null;
   next.cancelVotes = [];
   next.updatedAt = now;
@@ -321,9 +307,6 @@ export function applyGameMove(room, { playerId, move, now = Date.now() }) {
 
   const seat = seatOf(room, playerId);
   if (seat === -1) fail("NO_ESTAS_EN_LA_MESA", "No estas sentado en esta mesa.");
-  if (contandoMesa(room, now)) {
-    fail("CONTANDO_LA_MESA", "Espera, se estan poniendo las cartas de la mesa.");
-  }
 
   const next = structuredClone(room);
   // applyMove valida el turno y la legalidad; si algo no cuadra lanza GameError
@@ -331,21 +314,6 @@ export function applyGameMove(room, { playerId, move, now = Date.now() }) {
   next.match = applyMove(next.match, seat, move);
   if (next.match.winner !== null) next.phase = "terminada";
 
-  // Recien repartido: la mesa se cuenta antes de que juegue nadie.
-  next.contando = move?.type === "repartir" ? { desde: now, seat } : null;
-  next.updatedAt = now;
-  return next;
-}
-
-/** El repartidor avisa de que ya puso las cuatro cartas. */
-export function endCount(room, { playerId, now = Date.now() } = {}) {
-  if (!room.contando) return room;
-  const seat = seatOf(room, playerId);
-  if (seat !== room.contando.seat) {
-    fail("NO_REPARTES_TU", "Solo quien reparte pone las cartas de la mesa.");
-  }
-  const next = structuredClone(room);
-  next.contando = null;
   next.updatedAt = now;
   return next;
 }
@@ -410,8 +378,6 @@ export function publicRoom(room, viewerId, { now = Date.now() } = {}) {
     youAreHost: room.hostId === viewerId,
     full: room.seats.every((player) => player !== null),
     paused: isPaused(room),
-    // Quien reparte esta poniendo la mesa: nadie juega hasta que acabe.
-    contando: contandoMesa(room, now) ? { seat: room.contando.seat } : null,
     waitingFor: missingPlayers(room).map((player) => player.name),
     canVoteCancel:
       isPaused(room) &&
@@ -425,7 +391,7 @@ export function publicRoom(room, viewerId, { now = Date.now() } = {}) {
 /**
  * Lo que ve un jugador de la partida en si. Sin partida, `null`.
  *
- * Si la mesa esta en pausa o contandose, la vista se queda SIN jugadas
+ * Si la mesa esta en pausa, la vista se queda SIN jugadas
  * legales: si no, la interfaz te deja tocar una carta que el servidor va a
  * rechazar, y el juego se siente roto aunque la regla se este aplicando bien.
  */
@@ -435,7 +401,7 @@ export function gameViewFor(room, viewerId, { now = Date.now() } = {}) {
   if (seat === -1) return null;
 
   const view = publicStateFor(room.match, seat);
-  if (isPaused(room) || contandoMesa(room, now)) return { ...view, legalMoves: [] };
+  if (isPaused(room)) return { ...view, legalMoves: [] };
   return view;
 }
 

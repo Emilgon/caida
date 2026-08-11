@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, LayoutGroup, MotionConfig } from 'motion/react'
+import { AnimatePresence, LayoutGroup, MotionConfig, motion } from 'motion/react'
 
-import Carta, { Dorso, VUELO } from '../cartas/Carta.jsx'
+import Carta, { Dorso, RETIRADA, VUELO } from '../cartas/Carta.jsx'
 import Jugador from './Jugador.jsx'
 import Marcador from './Marcador.jsx'
 import Reparto, { SECUENCIA } from './Reparto.jsx'
 import { alternarSilencio, estaEnSilencio, sonido } from '../sonido.js'
-import { burbujaDe, burbujaVictima, lineaDe, nombreCanto, sonar } from './narracion.js'
+import {
+  burbujaDe,
+  burbujaVictima,
+  cartaDeId,
+  cartelDe,
+  lineaDe,
+  nombreCanto,
+  sonar,
+} from './narracion.js'
 import './mesa.css'
 
 // Dónde se sienta cada quien en pantalla. El turno corre hacia la derecha, así
@@ -36,12 +44,13 @@ export default function Mesa({ room, game, acciones, onSalir }) {
   const [burbujas, setBurbujas] = useState({}) // asiento -> aviso
   const [linea, setLinea] = useState(null)
   const [rumbo, setRumbo] = useState(RUMBO.arriba) // hacia dónde salen las capturadas
+  const [ordenSalida, setOrdenSalida] = useState({}) // id -> turno de salida
   const [golpe, setGolpe] = useState(null) // 'caida' | 'mesa'
+  const [caida, setCaida] = useState(null) // el cartelón de la caída
+  const [cartel, setCartel] = useState(null) // "Ronda 2", fin de mano…
   const [error, setError] = useState(null)
   const [silencio, setSilencio] = useState(estaEnSilencio)
 
-  // Estado del reparto a mano: primero se decide el orden, luego se cuenta.
-  const [reparto, setReparto] = useState({ first: null, direction: null, revelados: 0 })
 
   const vistos = useRef(null)
   const eraMiTurno = useRef(false)
@@ -51,7 +60,10 @@ export default function Mesa({ room, game, acciones, onSalir }) {
   const mano = game?.hand
   const cantos = mano?.cantos ?? []
   const miTurno = game?.legalMoves?.length > 0 && game.phase === 'juego'
-  const soyRepartidor = game?.phase === 'reparto' && game.legalMoves.length > 0
+  const soyRepartidor = game?.phase === "reparto" && game.legalMoves.length > 0
+  // Contando la mesa: solo el repartidor tiene jugadas, y son numeros.
+  const yoCuento = game?.phase === "contando" && game.legalMoves.length > 0
+  const contando = game?.phase === "contando"
 
   const posicionDe = useCallback(
     (seat) => {
@@ -95,18 +107,37 @@ export default function Mesa({ room, game, acciones, onSalir }) {
       const texto = lineaDe(evento)
       if (texto) ultimaLinea = texto
 
-      // Quien capturó decide hacia dónde salen volando las cartas: Motion las
-      // saca de la mesa en esa dirección al desmontarlas.
+      // Quien capturó decide hacia dónde salen volando las cartas, y en qué
+      // orden: la que jugó pasa por encima de cada una, y se las va llevando
+      // de una en una, no todas de golpe.
       if (evento.type === 'caida' || evento.type === 'recoger') {
         setRumbo(RUMBO[posicionDe(evento.seat)] ?? RUMBO.arriba)
+        setOrdenSalida(Object.fromEntries(evento.taken.map((id, i) => [id, i])))
+        enUnRato(() => setOrdenSalida({}), 1600)
+
+        if (evento.type === 'caida') {
+          // El cartel de la caída: qué carta le cayó a cuál, en el centro.
+          setCaida({
+            id: `${game.eventCount}`,
+            quien: nombre(evento.seat),
+            aQuien: evento.sobre === undefined ? null : nombre(evento.sobre),
+            carta: cartaDeId(evento.card),
+            victima: evento.taken[0] ? cartaDeId(evento.taken[0]) : null,
+            puntos: evento.points,
+            mesa: evento.mesaLimpia,
+          })
+          enUnRato(() => setCaida(null), 2400)
+        }
         setGolpe(evento.type === 'caida' ? 'caida' : evento.mesaLimpia ? 'mesa' : null)
-        enUnRato(() => setGolpe(null), 800)
+        enUnRato(() => setGolpe(null), 1400)
       }
 
-      // Reparto nuevo: si no soy yo quien cuenta, las cartas van saliendo solas.
-      if (evento.type === 'reparto') {
-        setReparto((previo) => ({ ...previo, direction: evento.direction, revelados: previo.revelados }))
+      const cartel = cartelDe(evento)
+      if (cartel) {
+        setCartel({ ...cartel, id: `${game.eventCount}` })
+        enUnRato(() => setCartel(null), 2000)
       }
+
     }
 
     if (Object.keys(frescas).length > 0) {
@@ -125,7 +156,7 @@ export default function Mesa({ room, game, acciones, onSalir }) {
       setLinea(ultimaLinea)
       enUnRato(() => setLinea((actual) => (actual === ultimaLinea ? null : actual)), DURACION_LINEA)
     }
-  }, [game, enUnRato, posicionDe])
+  }, [game, enUnRato, posicionDe, nombre])
 
   // --- Alarma de turno -----------------------------------------------------
   useEffect(() => {
@@ -137,30 +168,6 @@ export default function Mesa({ room, game, acciones, onSalir }) {
     setResaltadas([])
   }, [mano?.turn, game?.phase])
 
-  // --- Reparto: al empezar una mano nueva se reinicia el conteo ------------
-  useEffect(() => {
-    if (game?.phase === 'reparto') setReparto({ first: null, direction: null, revelados: 0 })
-  }, [game?.phase, game?.handNumber])
-
-  // Quien no reparte ve salir las cartas solas, una tras otra.
-  useEffect(() => {
-    if (!mano || reparto.first !== null) return // el que cuenta va a su ritmo
-    if (mano.lastPlayed !== null || mano.lastCapturer !== null) return
-    if (reparto.revelados >= 4) return
-    const id = enUnRato(() => setReparto((p) => ({ ...p, revelados: Math.min(4, p.revelados + 1) })), 700)
-    return () => clearTimeout(id)
-  }, [mano, reparto.first, reparto.revelados, enUnRato])
-
-  // El conteo solo vive en el hueco entre repartir y la primera jugada: en
-  // cuanto alguien juega, las posiciones de la mesa ya no son las del reparto
-  // y el filtro de revelado escondería cartas en juego.
-  const reciénRepartida =
-    Boolean(mano) && mano.lastPlayed === null && mano.lastCapturer === null && mano.table.length === 4
-  const contando = reciénRepartida && reparto.revelados < 4
-
-  // Quien reparte es el único que pone `first`, y sigue contando aunque la
-  // partida ya haya pasado a fase de juego.
-  const yoCuento = reparto.first !== null
 
   const jugadaDe = useCallback(
     (cartaId) => game?.legalMoves?.find((move) => move.card === cartaId),
@@ -182,21 +189,11 @@ export default function Mesa({ room, game, acciones, onSalir }) {
     await pedir({ type: 'jugar', card: move.card })
   }
 
-  /** El repartidor pone la carta número `n` sobre la mesa. */
-  async function contar(n) {
-    if (reparto.direction === null) {
-      const direction = n === 1 ? 'ascendente' : 'descendente'
-      setReparto((p) => ({ ...p, direction, revelados: 1 }))
-      sonido.carta()
-      const r = await pedir({ type: 'repartir', first: reparto.first, direction })
-      if (!r.ok) setReparto((p) => ({ ...p, direction: null, revelados: 0 }))
-      return
-    }
+  /** El repartidor pone la carta numero `n` cantandola. Cada una es una
+   *  jugada de verdad contra el servidor, no un revelado del cliente. */
+  async function contar(numero) {
     sonido.carta()
-    const puestas = Math.min(4, reparto.revelados + 1)
-    setReparto((p) => ({ ...p, revelados: puestas }))
-    // Con las cuatro en la mesa se avisa al servidor y ahí empieza el juego.
-    if (puestas === 4) await acciones.contado()
+    await pedir({ type: "contar", numero })
   }
 
   const asientos = useMemo(
@@ -216,9 +213,8 @@ export default function Mesa({ room, game, acciones, onSalir }) {
   const terminada = game.winner !== null
   const gane = terminada && game.winner === game.team
   const turnoDe = game.phase === 'reparto' ? game.dealer : mano?.turn
-  const visiblesEnMesa = contando
-    ? mano.table.filter((_, pos) => pos < reparto.revelados)
-    : (mano?.table ?? [])
+  // El servidor ya manda solo las cartas cantadas mientras se cuenta.
+  const visiblesEnMesa = mano?.table ?? []
 
   return (
     // LayoutGroup es lo que hace que una carta se reconozca a sí misma entre
@@ -275,12 +271,12 @@ export default function Mesa({ room, game, acciones, onSalir }) {
 
           <div className="mesa-tapete">
             {/* Contando la mesa: siluetas numeradas en vez de las cartas. */}
-            {yoCuento && (game.phase === 'reparto' || contando) ? (
+            {contando ? (
               <Reparto
                 mesa={mano?.table ?? []}
-                direction={reparto.direction}
-                revelados={reparto.revelados}
-                puedoContar
+                direction={mano?.direction ?? null}
+                contadas={mano?.contadas ?? 0}
+                puedoContar={yoCuento}
                 onContar={contar}
               />
             ) : (
@@ -298,7 +294,16 @@ export default function Mesa({ room, game, acciones, onSalir }) {
                       vuela
                       estado={resaltadas.includes(carta.id) ? 'capturable' : ''}
                       className={mano?.lastPlayed?.id === carta.id ? 'carta-cayendo' : ''}
-                      exit={{ ...rumbo, scale: 0.5, opacity: 0, rotate: 14 }}
+                      exit={{
+                        ...rumbo,
+                        scale: 0.45,
+                        opacity: 0,
+                        rotate: 14,
+                        // Se van de una en una, en el orden en que se
+                        // arrastran: primero la del valor jugado, luego la
+                        // siguiente de la escalera, y así.
+                        transition: { ...RETIRADA, delay: (ordenSalida[carta.id] ?? 0) * 0.22 },
+                      }}
                       transition={VUELO}
                     />
                   ))}
@@ -309,6 +314,47 @@ export default function Mesa({ room, game, acciones, onSalir }) {
         </div>
 
         {linea && <div className="mesa-linea">{linea}</div>}
+
+        {/* El cartelón de la caída: quién le cayó, con qué, y a qué carta. */}
+        <AnimatePresence>
+          {caida && (
+            <motion.div
+              key={caida.id}
+              className="caidazo"
+              initial={{ opacity: 0, scale: 0.6, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 1.25 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 18 }}
+            >
+              <span className="caidazo-titulo">
+                {caida.mesa ? '¡CAÍDA CON MESA!' : '¡CAÍDA!'}
+              </span>
+              <div className="caidazo-cartas">
+                {caida.victima && <Carta carta={caida.victima} className="caidazo-victima" />}
+                <Carta carta={caida.carta} className="caidazo-verdugo" />
+              </div>
+              <span className="caidazo-pie">
+                {caida.quien} · +{caida.puntos}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Ronda nueva, fin de mano: lo que corta el ritmo va en grande. */}
+        <AnimatePresence>
+          {cartel && (
+            <motion.div
+              key={cartel.id}
+              className={`cartel cartel-${cartel.tono}`}
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.2 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+            >
+              {cartel.texto}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {room.paused && (
           <div className="mesa-pausa">
@@ -392,27 +438,28 @@ export default function Mesa({ room, game, acciones, onSalir }) {
 
       {/* --- Capas por encima de la mesa ------------------------------------ */}
 
-      {!terminada && game.phase === 'reparto' && soyRepartidor && reparto.first === null && (
+      {!terminada && soyRepartidor && (
         <div className="capa capa-quieta">
           <div className="panel-pila">
             {game.lastHand && <ResumenMano resumen={game.lastHand} room={room} game={game} />}
             <div className="panel">
               <h3>Te toca repartir</h3>
               <p className="panel-pista">
-                ¿Reparto primero a los jugadores, o empiezo poniendo las cartas de la mesa?
+                ¿Reparto primero a los jugadores, o empiezo poniendo las cartas de la mesa? En
+                cualquier caso, las cartas se echan ya: después las cuentas tú.
               </p>
               <div className="panel-botones">
                 <button
                   type="button"
                   className="boton"
-                  onClick={() => setReparto((p) => ({ ...p, first: 'manos' }))}
+                  onClick={() => pedir({ type: 'repartir', first: 'manos' })}
                 >
                   A los jugadores primero
                 </button>
                 <button
                   type="button"
                   className="boton boton-fantasma"
-                  onClick={() => setReparto((p) => ({ ...p, first: 'mesa' }))}
+                  onClick={() => pedir({ type: 'repartir', first: 'mesa' })}
                 >
                   La mesa primero
                 </button>
@@ -435,20 +482,20 @@ export default function Mesa({ room, game, acciones, onSalir }) {
       )}
 
       {/* Instrucción del conteo, pegada abajo para no tapar la mesa. */}
-      {yoCuento && reparto.direction === null && (
+      {yoCuento && mano.direction === null && (
         <div className="mesa-instruccion">
           Toca el <strong>1</strong> para contar hacia arriba, o el <strong>4</strong> para contar
           hacia abajo
         </div>
       )}
-      {yoCuento && contando && reparto.direction !== null && (
+      {yoCuento && mano.direction !== null && (
         <div className="mesa-instruccion">
-          Sigue contando: toca el <strong>{SECUENCIA[reparto.direction][reparto.revelados]}</strong>
+          Sigue contando: toca el <strong>{SECUENCIA[mano.direction][mano.contadas]}</strong>
         </div>
       )}
-      {!yoCuento && room.contando && (
+      {contando && !yoCuento && (
         <div className="mesa-instruccion">
-          {nombre(room.contando.seat)} está poniendo la mesa…
+          {nombre(mano.dealer)} está poniendo la mesa… ({mano.contadas} de 4)
         </div>
       )}
 

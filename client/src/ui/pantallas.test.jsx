@@ -7,7 +7,6 @@ import {
   applyGameMove,
   createRoom,
   currentSeat,
-  endCount,
   gameViewFor,
   publicRoom,
   startMatch,
@@ -40,8 +39,6 @@ function mesaConBots(players, jugadas = 0) {
     if (seat === null) break
     const vista = gameViewFor(room, room.seats[seat].id)
     room = applyGameMove(room, { playerId: room.seats[seat].id, move: chooseMove(vista) })
-    // Tras repartir, la mesa se cuenta y nadie juega hasta que acabe.
-    if (room.contando) room = endCount(room, { playerId: room.seats[room.contando.seat].id })
   }
   return room
 }
@@ -182,7 +179,6 @@ describe('el tablero se dibuja', () => {
       const seat = currentSeat(room)
       const vista = gameViewFor(room, room.seats[seat].id)
       room = applyGameMove(room, { playerId: room.seats[seat].id, move: chooseMove(vista) })
-      if (room.contando) room = endCount(room, { playerId: room.seats[room.contando.seat].id })
     }
     const html = pintarMesa(room)
     assert.ok(/¡Ganaste!|Perdiste/.test(html))
@@ -215,7 +211,7 @@ describe('el conteo de la mesa', () => {
 
   it('al principio solo se puede empezar por el 1 o por el 4', () => {
     const html = renderToStaticMarkup(
-      <Reparto mesa={[]} direction={null} revelados={0} puedoContar onContar={() => {}} />,
+      <Reparto mesa={[]} direction={null} contadas={0} puedoContar onContar={() => {}} />,
     )
     const activas = (html.match(/conteo-activa/g) ?? []).length
     assert.equal(activas, 2, 'el 2 y el 3 no pueden abrir el conteo')
@@ -225,7 +221,7 @@ describe('el conteo de la mesa', () => {
   it('empezado el conteo, solo vale el siguiente de la fila', () => {
     const mesa = cartasDe('oros-1', 'copas-5', 'espadas-7', 'bastos-11')
     const html = renderToStaticMarkup(
-      <Reparto mesa={mesa} direction="ascendente" revelados={1} puedoContar onContar={() => {}} />,
+      <Reparto mesa={mesa} direction="ascendente" contadas={1} puedoContar onContar={() => {}} />,
     )
     assert.equal((html.match(/conteo-activa/g) ?? []).length, 1)
     // La primera ya está puesta y las otras dos esperan su turno.
@@ -235,7 +231,7 @@ describe('el conteo de la mesa', () => {
 
   it('quien no reparte no puede tocar ninguna silueta', () => {
     const html = renderToStaticMarkup(
-      <Reparto mesa={[]} direction={null} revelados={0} puedoContar={false} onContar={() => {}} />,
+      <Reparto mesa={[]} direction={null} contadas={0} puedoContar={false} onContar={() => {}} />,
     )
     assert.equal((html.match(/conteo-activa/g) ?? []).length, 0)
     assert.equal((html.match(/disabled/g) ?? []).length, 4)

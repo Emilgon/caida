@@ -84,13 +84,17 @@ async function ok(player, event, payload) {
   return response;
 }
 
-/**
- * Juega un movimiento. Si era repartir, avisa ademas de que ya se conto la
- * mesa: hasta ese aviso no puede jugar nadie, igual que en la mesa de verdad.
- */
+/** Echa las cartas y canta la mesa entera, que son cinco jugadas. */
+async function repartirYContar(player) {
+  await ok(player, "juego:jugada", { move: { type: "repartir", first: "manos" } });
+  for (const numero of [1, 2, 3, 4]) {
+    await ok(player, "juego:jugada", { move: { type: "contar", numero } });
+  }
+}
+
+/** Juega un movimiento: repartir, contar una carta de la mesa, o jugar. */
 async function jugar(player, move) {
   await ok(player, "juego:jugada", { move });
-  if (move?.type === "repartir") await ok(player, "juego:contado");
 }
 
 /**
@@ -253,7 +257,7 @@ describe("salas por socket", () => {
 
     // Reparte quien toque, para que la mano ya tenga cartas repartidas.
     const dealerSeat = s.store.find(code).match.dealer;
-    await jugar(players[dealerSeat], { type: "repartir", first: "manos", direction: "ascendente" });
+    await repartirYContar(players[dealerSeat]);
     await until(() => players[1].state.game?.hand !== null, "reparto");
 
     const ana = players[1];
@@ -329,29 +333,39 @@ describe("salas por socket", () => {
     await until(() => host.state.room.phase === "jugando", "arranque");
 
     const repartidor = players[s.store.find(code).match.dealer];
-    await ok(repartidor, "juego:jugada", {
-      move: { type: "repartir", first: "manos", direction: "ascendente" },
-    });
-    await until(() => players.every((p) => p.state.room.contando !== null), "que se cuente la mesa");
+    const otro = players.find((p) => p !== repartidor);
 
-    // Ni el que reparte ni el otro pueden jugar todavia.
+    await ok(repartidor, "juego:jugada", { move: { type: "repartir", first: "manos" } });
+    await until(() => repartidor.state.game?.hand?.myCards.length === 3, "mis cartas");
+
+    // Las cartas se reparten YA, aunque la mesa siga sin contar.
+    assert.equal(otro.state.game.hand.myCards.length, 3);
+    assert.equal(otro.state.game.hand.table.length, 0, "la mesa todavia no esta puesta");
+
+    // Nadie puede jugar mientras se cuenta, ni siquiera el repartidor.
     for (const player of players) {
-      const carta = player.state.game?.hand?.myCards?.[0];
-      if (!carta) continue;
-      const negado = await send(player, "juego:jugada", {
-        move: { type: "jugar", card: carta.id },
-      });
+      const carta = player.state.game.hand.myCards[0];
+      const negado = await send(player, "juego:jugada", { move: { type: "jugar", card: carta.id } });
       assert.equal(negado.ok, false);
-      assert.equal(negado.error.code, "CONTANDO_LA_MESA");
+      // Al repartidor le dice que esa carta no vale ahora, porque lo unico que
+      // puede hacer es contar; al otro, que no es su turno.
+      assert.ok(
+        ["FUERA_DE_TURNO", "CARTA_INVALIDA"].includes(negado.error.code),
+        negado.error.code,
+      );
     }
 
-    // Solo quien reparte puede dar la mesa por puesta.
-    const otro = players.find((p) => p !== repartidor);
-    const ajeno = await send(otro, "juego:contado");
-    assert.equal(ajeno.error.code, "NO_REPARTES_TU");
+    // Y contar solo puede el repartidor, y solo el numero que toca.
+    const ajeno = await send(otro, "juego:jugada", { move: { type: "contar", numero: 1 } });
+    assert.equal(ajeno.error.code, "FUERA_DE_TURNO");
+    const saltado = await send(repartidor, "juego:jugada", { move: { type: "contar", numero: 2 } });
+    assert.equal(saltado.error.code, "CONTEO_INVALIDO");
 
-    await ok(repartidor, "juego:contado");
-    await until(() => players.every((p) => p.state.room.contando === null), "que suelte la mesa");
+    // Las cartas van saliendo una a una, para todos a la vez.
+    for (const [i, numero] of [1, 2, 3, 4].entries()) {
+      await ok(repartidor, "juego:jugada", { move: { type: "contar", numero } });
+      await until(() => otro.state.game.hand.table.length === i + 1, `la carta ${numero}`);
+    }
 
     const actor = await turnOf(players);
     assert.ok(actor, "ya deberia poder jugar alguien");
@@ -367,13 +381,13 @@ describe("salas por socket", () => {
     await until(() => yo.state.room.full, "bot sentado");
     await ok(yo, "sala:empezar");
 
-    // Si reparte el bot, la mesa se cuenta sola y el juego arranca despues.
+    // Si reparte el bot, echa las cartas y canta la mesa carta a carta.
     if (s.store.find(code).match.dealer === 1) {
-      await until(() => yo.state.room.contando !== null, "que el bot reparta");
-      assert.equal(yo.state.room.contando.seat, 1);
-      await until(() => yo.state.room.contando === null, "que el bot acabe de contar");
+      await until(() => yo.state.game?.hand?.myCards.length === 3, "que el bot reparta");
+      assert.equal(yo.state.game.hand.table.length, 0, "todavia no ha cantado ninguna");
+      await until(() => yo.state.game.hand.table.length === 4, "que el bot cante las cuatro");
     }
-    assert.equal(s.store.find(code).match.phase, "juego");
+    await until(() => s.store.find(code).match.phase === "juego", "que arranque el juego");
   });
 
   it("una mesa de 4 contra los tres bots, con parejas", async () => {

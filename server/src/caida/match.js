@@ -189,13 +189,15 @@ export function legalMoves(match, seat) {
 
   if (match.phase === "reparto") {
     if (seat !== match.dealer) return [];
-    const moves = [];
-    for (const first of DEAL_FIRST) {
-      for (const direction of DIRECTIONS) {
-        moves.push({ type: "repartir", first, direction });
-      }
-    }
-    return moves;
+    return DEAL_FIRST.map((first) => ({ type: "repartir", first }));
+  }
+
+  // Contando la mesa: solo el repartidor actua, y solo puede cantar el numero
+  // que toca. Abre por el 1 o por el 4 y de ahi sigue la fila; no puede
+  // saltar al 2 ni al 3.
+  if (match.phase === "contando") {
+    if (seat !== match.hand.dealer) return [];
+    return countableNumbers(match.hand).map((numero) => ({ type: "contar", numero }));
   }
 
   if (match.phase !== "juego") return [];
@@ -233,7 +235,7 @@ function dealThree(match) {
   hand.deals += 1;
 }
 
-function dealHand(match, { first, direction }) {
+function dealHand(match, { first }) {
   const next = structuredClone(match);
   const players = next.players;
   const dealer = next.dealer;
@@ -274,14 +276,20 @@ function dealHand(match, { first, direction }) {
   }
 
   next.handNumber += 1;
-  next.phase = "juego";
+  // Repartidas las cartas, todavia falta contar la mesa. Hasta que el
+  // repartidor no ponga las cuatro cantando su numero, no juega nadie: es
+  // asi en la mesa de verdad, y ademas es lo que hace que las cartas se vean
+  // salir una a una en vez de aparecer las cuatro de golpe.
+  next.phase = "contando";
   next.hand = {
     dealer,
     first,
-    direction,
+    direction: null,
     deck,
     hands,
     table,
+    contadas: 0,
+    aciertos: [],
     captured: Array.from({ length: players }, () => []),
     canto: hands.map((cards) => detectCanto(cards)),
     declared: hands.map(() => false),
@@ -292,27 +300,55 @@ function dealHand(match, { first, direction }) {
     lastCapturer: null,
     deals: 1,
   };
-  pushLog(next, { type: "reparto", hand: next.handNumber, dealer, first, direction });
+  pushLog(next, { type: "reparto", hand: next.handNumber, dealer, first });
+  return next;
+}
 
-  // Conteo de la mesa: se van cantando los numeros segun el sentido elegido y
-  // cada carta que coincida con su numero le da esos puntos al repartidor.
-  const numbers = direction === "ascendente" ? [1, 2, 3, 4] : [4, 3, 2, 1];
-  const hits = [];
-  let mesaPoints = 0;
-  table.forEach((card, index) => {
-    if (card.value === numbers[index]) {
-      hits.push({ position: index + 1, number: numbers[index], card: card.id });
-      mesaPoints += numbers[index];
-    }
-  });
+/** El numero que se canta en cada posicion, segun el sentido. */
+function countNumbers(direction) {
+  return direction === "ascendente" ? [1, 2, 3, 4] : [4, 3, 2, 1];
+}
 
-  if (mesaPoints > 0) {
-    pushLog(next, { type: "mesa-cantada", seat: dealer, hits, points: mesaPoints });
-    addScore(next, teamOf(next, dealer), mesaPoints, "mesa-cantada", { seat: dealer });
+/** Qué numeros puede cantar el repartidor ahora mismo. */
+function countableNumbers(hand) {
+  if (hand.direction === null) return [1, TABLE_SIZE]; // se abre por el 1 o por el 4
+  return [countNumbers(hand.direction)[hand.contadas]];
+}
+
+/**
+ * El repartidor pone la siguiente carta de la mesa cantando su numero. Si el
+ * valor de la carta coincide con el numero, esos puntos son suyos, y se
+ * cobran en el acto.
+ */
+function countCard(match, { numero }) {
+  const next = structuredClone(match);
+  const hand = next.hand;
+
+  if (hand.direction === null) {
+    hand.direction = numero === 1 ? "ascendente" : "descendente";
+  }
+
+  const posicion = hand.contadas;
+  const card = hand.table[posicion];
+  hand.contadas += 1;
+
+  if (card.value === numero) {
+    hand.aciertos.push({ position: posicion + 1, number: numero, card: card.id });
+    pushLog(next, { type: "mesa-cantada", seat: hand.dealer, number: numero, card: card.id, points: numero });
+    addScore(next, teamOf(next, hand.dealer), numero, "mesa-cantada", { seat: hand.dealer });
   } else {
-    const consoled = (dealer + 1) % players;
-    pushLog(next, { type: "mal-echada", seat: consoled });
-    addScore(next, teamOf(next, consoled), MAL_ECHADA_POINTS, "mal-echada", { seat: consoled });
+    pushLog(next, { type: "contada", seat: hand.dealer, number: numero, card: card.id });
+  }
+
+  if (hand.contadas === TABLE_SIZE) {
+    next.phase = "juego";
+    if (hand.aciertos.length === 0) {
+      // Mal echada: no acerto ni una, y el primero en jugar se lleva el consuelo.
+      const consoled = (hand.dealer + 1) % next.players;
+      pushLog(next, { type: "mal-echada", seat: consoled });
+      addScore(next, teamOf(next, consoled), MAL_ECHADA_POINTS, "mal-echada", { seat: consoled });
+    }
+    pushLog(next, { type: "mesa-puesta", seat: hand.dealer });
   }
 
   checkWinner(next);
@@ -595,18 +631,23 @@ export function applyMove(match, seat, move) {
 
   if (move?.type === "repartir") {
     const chosen = legal.find(
-      (option) =>
-        option.type === "repartir" &&
-        option.first === move.first &&
-        option.direction === move.direction,
+      (option) => option.type === "repartir" && option.first === move.first,
     );
     if (!chosen) {
-      throw new GameError(
-        "REPARTO_INVALIDO",
-        'Elige repartir primero "manos" o "mesa", y contar "ascendente" o "descendente".',
-      );
+      throw new GameError("REPARTO_INVALIDO", 'Elige repartir primero "manos" o "mesa".');
     }
     return dealHand(match, chosen);
+  }
+
+  if (move?.type === "contar") {
+    const chosen = legal.find(
+      (option) => option.type === "contar" && option.numero === move.numero,
+    );
+    if (!chosen) {
+      const toca = countableNumbers(match.hand).join(" o el ");
+      throw new GameError("CONTEO_INVALIDO", `Ahora toca poner el ${toca}.`);
+    }
+    return countCard(match, chosen);
   }
 
   if (move?.type === "jugar") {
@@ -660,7 +701,13 @@ export function publicStateFor(match, seat) {
       first: hand.first,
       direction: hand.direction,
       turn: hand.turn,
-      table: hand.table.map((card) => ({ ...card })),
+      // Mientras se cuenta la mesa solo se ven las cartas ya puestas: el
+      // reveldo lo manda el servidor, asi que todos ven lo mismo a la vez.
+      table: (match.phase === "contando" ? hand.table.slice(0, hand.contadas) : hand.table).map(
+        (card) => ({ ...card }),
+      ),
+      contadas: hand.contadas ?? TABLE_SIZE,
+      aciertos: (hand.aciertos ?? []).map((a) => ({ ...a })),
       myCards: (hand.hands[seat] ?? []).map((card) => ({ ...card })),
       myCanto: hand.canto[seat] ? { ...hand.canto[seat] } : null,
       myCantoDeclared: hand.declared[seat] ?? false,

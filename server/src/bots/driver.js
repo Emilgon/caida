@@ -1,11 +1,4 @@
-import {
-  applyGameMove,
-  contandoMesa,
-  currentSeat,
-  endCount,
-  gameViewFor,
-  isBotSeat,
-} from "../rooms/room.js";
+import { applyGameMove, currentSeat, gameViewFor, isBotSeat } from "../rooms/room.js";
 import { chooseMove } from "./policy.js";
 
 // Hace jugar a los bots cuando les toca. Vive fuera de `handlers.js` porque
@@ -14,10 +7,7 @@ import { chooseMove } from "./policy.js";
 
 // Sin la pausa el bot juega instantaneo y la mano se va sin que te enteres de
 // nada. Dos segundos y medio dan tiempo a leer que jugo, si canto y si te cayo.
-export const BOT_DELAY_MS = 2500
-// Lo que tarda un bot en "cantar" las cuatro cartas de la mesa, para que se
-// vean salir una a una igual que cuando cuenta una persona.
-export const CONTEO_BOT_MS = 3200;
+export const BOT_DELAY_MS = 2500;
 
 export function createBotDriver({ store, broadcast, delay = BOT_DELAY_MS, random = Math.random }) {
   // Un temporizador por sala como maximo: si no, dos avisos seguidos harian
@@ -59,35 +49,11 @@ export function createBotDriver({ store, broadcast, delay = BOT_DELAY_MS, random
     schedule(code);
   }
 
-  /** Un bot acaba de repartir: "canta" la mesa y despues suelta el juego. */
-  async function terminarConteo(code) {
-    pending.delete(code);
-    const room = store.find(code);
-    if (!room || !room.contando) return;
-    const next = endCount(room, { playerId: room.seats[room.contando.seat].id });
-    store.save(next);
-    await broadcast(next);
-    schedule(code);
-  }
-
   /** Si el turno es de un bot, programa su jugada. Si no, no hace nada. */
   function schedule(code) {
     cancel(code);
     const room = store.find(code);
     if (!room) return;
-
-    // Mientras se cuenta la mesa no juega nadie. Si quien cuenta es un bot le
-    // damos su tiempo y soltamos la mesa nosotros; si es una persona, se
-    // espera a que avise (o a que venza el plazo de seguridad).
-    if (contandoMesa(room)) {
-      if (!isBotSeat(room, room.contando.seat)) return;
-      const espera = setTimeout(() => {
-        terminarConteo(code).catch((error) => console.error("fallo el conteo de un bot:", error));
-      }, Math.max(delay, CONTEO_BOT_MS));
-      espera.unref?.();
-      pending.set(code, espera);
-      return;
-    }
 
     const seat = currentSeat(room);
     if (seat === null || !isBotSeat(room, seat)) return;

@@ -7,6 +7,13 @@ import { countAllCards } from "./testing.js";
 
 const MAX_MOVES = 20000;
 
+/** A quien le toca: repartir, contar la mesa, o jugar su carta. */
+function currentSeatOf(match) {
+  if (match.phase === "reparto") return match.dealer;
+  if (match.phase === "contando") return match.hand.dealer;
+  return match.hand.turn;
+}
+
 /**
  * Juega una partida entera con un bot que elige al azar entre las jugadas
  * legales. No busca jugar bien: busca que el motor nunca se trabe ni pierda
@@ -24,7 +31,7 @@ function playFullMatch({ players, mode = "tradicional", target = 24, seed, botSe
     moves += 1;
     assert.ok(moves < MAX_MOVES, "la partida no termina nunca");
 
-    const seat = match.phase === "reparto" ? match.dealer : match.hand.turn;
+    const seat = currentSeatOf(match);
     const options = legalMoves(match, seat);
     assert.ok(options.length > 0, `el asiento ${seat} se quedo sin jugadas legales`);
 
@@ -34,10 +41,7 @@ function playFullMatch({ players, mode = "tradicional", target = 24, seed, botSe
     }
 
     const choice = options[rng.int(options.length)];
-    const move =
-      choice.type === "repartir"
-        ? choice
-        : { type: "jugar", card: choice.card, cantar: choice.canDeclare && rng.next() < 0.8 };
+    const move = choice.type === "jugar" ? { type: "jugar", card: choice.card } : choice;
 
     match = applyMove(match, seat, move);
 
@@ -125,7 +129,7 @@ describe("partidas completas", () => {
       const rng = createRng(3);
       // Juega hasta cerrar la primera mano.
       while (match.lastHand === null && match.winner === null) {
-        const seat = match.phase === "reparto" ? match.dealer : match.hand.turn;
+        const seat = currentSeatOf(match);
         const options = legalMoves(match, seat);
         match = applyMove(match, seat, options[rng.int(options.length)]);
       }
@@ -165,7 +169,7 @@ describe("partidas completas", () => {
           }
         }
       }
-      const seat = match.phase === "reparto" ? match.dealer : match.hand.turn;
+      const seat = currentSeatOf(match);
       const options = legalMoves(match, seat);
       match = applyMove(match, seat, options[rng.int(options.length)]);
     }

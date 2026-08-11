@@ -6,10 +6,23 @@ import { createDeck } from "./deck.js";
 import { applyMove, createMatch, legalMoves, publicStateFor } from "./match.js";
 import { card, cards, countAllCards, scenario } from "./testing.js";
 
-// Reparte una mano concreta para no depender del azar en cada test.
+// Reparte una mano concreta para no depender del azar en cada test. Repartir
+// y contar la mesa son dos actos: se echan las cartas y despues el repartidor
+// las va poniendo cantando su numero.
 function dealt({ players = 2, seed = "mesa", first = "manos", direction = "ascendente" } = {}) {
-  const match = createMatch({ players, seed });
-  return applyMove(match, match.dealer, { type: "repartir", first, direction });
+  let match = createMatch({ players, seed });
+  match = applyMove(match, match.dealer, { type: "repartir", first });
+  return contarMesa(match, direction);
+}
+
+/** El repartidor canta las cuatro, en el sentido pedido. */
+function contarMesa(match, direction = "ascendente") {
+  const numeros = direction === "ascendente" ? [1, 2, 3, 4] : [4, 3, 2, 1];
+  let next = match;
+  for (const numero of numeros) {
+    next = applyMove(next, next.hand.dealer, { type: "contar", numero });
+  }
+  return next;
 }
 
 // Todas las cartas del mazo menos las que el test usa explicitamente.
@@ -69,12 +82,81 @@ describe("createMatch", () => {
 });
 
 describe("reparto", () => {
-  it("solo el repartidor decide como repartir, y tiene 4 opciones", () => {
+  it("solo el repartidor decide si echa antes las manos o la mesa", () => {
     const match = createMatch({ players: 3, seed: 7 });
-    assert.equal(legalMoves(match, match.dealer).length, 4);
+    assert.deepEqual(legalMoves(match, match.dealer), [
+      { type: "repartir", first: "manos" },
+      { type: "repartir", first: "mesa" },
+    ]);
     for (let seat = 0; seat < 3; seat += 1) {
       if (seat !== match.dealer) assert.deepEqual(legalMoves(match, seat), []);
     }
+  });
+
+  it("al repartir ya tienes tus cartas, aunque la mesa este sin contar", () => {
+    const match = createMatch({ players: 3, seed: 7 });
+    const echadas = applyMove(match, match.dealer, { type: "repartir", first: "manos" });
+
+    assert.equal(echadas.phase, "contando");
+    assert.deepEqual(echadas.hand.hands.map((h) => h.length), [3, 3, 3]);
+    // La mesa esta repartida pero todavia no se ve: falta cantarla.
+    assert.equal(echadas.hand.table.length, 4);
+    assert.equal(echadas.hand.contadas, 0);
+    assert.equal(publicStateFor(echadas, echadas.dealer).hand.table.length, 0);
+    assert.equal(publicStateFor(echadas, echadas.dealer).hand.myCards.length, 3);
+  });
+
+  it("contando la mesa manda el repartidor, y solo puede abrir por el 1 o el 4", () => {
+    const match = createMatch({ players: 3, seed: 7 });
+    const echadas = applyMove(match, match.dealer, { type: "repartir", first: "manos" });
+    const dealer = echadas.hand.dealer;
+
+    assert.deepEqual(legalMoves(echadas, dealer), [
+      { type: "contar", numero: 1 },
+      { type: "contar", numero: 4 },
+    ]);
+    for (let seat = 0; seat < 3; seat += 1) {
+      if (seat !== dealer) assert.deepEqual(legalMoves(echadas, seat), []);
+    }
+
+    assert.throws(() => applyMove(echadas, dealer, { type: "contar", numero: 2 }), {
+      code: "CONTEO_INVALIDO",
+    });
+  });
+
+  it("empezado el conteo, solo vale el siguiente de la fila", () => {
+    const match = createMatch({ players: 2, seed: 7 });
+    let m = applyMove(match, match.dealer, { type: "repartir", first: "manos" });
+    const dealer = m.hand.dealer;
+
+    m = applyMove(m, dealer, { type: "contar", numero: 4 }); // hacia abajo
+    assert.equal(m.hand.direction, "descendente");
+    assert.deepEqual(legalMoves(m, dealer), [{ type: "contar", numero: 3 }]);
+    assert.throws(() => applyMove(m, dealer, { type: "contar", numero: 1 }), {
+      code: "CONTEO_INVALIDO",
+    });
+
+    // Cada carta cantada aparece en la mesa, una a una.
+    assert.equal(publicStateFor(m, dealer).hand.table.length, 1);
+    m = applyMove(m, dealer, { type: "contar", numero: 3 });
+    assert.equal(publicStateFor(m, dealer).hand.table.length, 2);
+    assert.equal(m.phase, "contando", "todavia faltan dos");
+
+    m = applyMove(m, dealer, { type: "contar", numero: 2 });
+    m = applyMove(m, dealer, { type: "contar", numero: 1 });
+    assert.equal(m.phase, "juego");
+    assert.equal(publicStateFor(m, dealer).hand.table.length, 4);
+  });
+
+  it("nadie puede jugar mientras se cuenta la mesa", () => {
+    const match = createMatch({ players: 2, seed: 7 });
+    const echadas = applyMove(match, match.dealer, { type: "repartir", first: "manos" });
+    const primero = (echadas.hand.dealer + 1) % 2;
+    assert.deepEqual(legalMoves(echadas, primero), []);
+    assert.throws(
+      () => applyMove(echadas, primero, { type: "jugar", card: echadas.hand.hands[primero][0].id }),
+      { code: "FUERA_DE_TURNO" },
+    );
   });
 
   it("da 3 cartas a cada uno y 4 a la mesa", () => {
@@ -133,7 +215,7 @@ describe("reparto", () => {
 
   it("rechaza un reparto con opciones invalidas", () => {
     const match = createMatch({ players: 2, seed: 3 });
-    assert.throws(() => applyMove(match, match.dealer, { type: "repartir", first: "aire", direction: "ascendente" }), {
+    assert.throws(() => applyMove(match, match.dealer, { type: "repartir", first: "aire" }), {
       code: "REPARTO_INVALIDO",
     });
   });

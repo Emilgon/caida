@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   GRACE_MS,
   applyGameMove,
+  currentSeat,
   createRoom,
   disconnectPlayer,
   gameViewFor,
@@ -195,13 +196,15 @@ describe("jugar desde la sala", () => {
     const dealerId = sala.seats[dealer].id;
     const otherId = sala.seats[(dealer + 1) % 2].id;
 
-    const move = { type: "repartir", first: "manos", direction: "ascendente" };
+    const move = { type: "repartir", first: "manos" };
     assert.throws(() => applyGameMove(sala, { playerId: otherId, move }), {
       code: "FUERA_DE_TURNO",
     });
 
+    // Echadas las cartas, queda contar la mesa antes de que juegue nadie.
     const next = applyGameMove(sala, { playerId: dealerId, move });
-    assert.equal(next.match.phase, "juego");
+    assert.equal(next.match.phase, "contando");
+    assert.equal(currentSeat(next), dealer, "contando manda el repartidor");
   });
 
   it("quien no esta en la mesa no puede jugar", () => {

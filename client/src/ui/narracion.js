@@ -50,9 +50,16 @@ export function burbujaDe(evento) {
     case 'mata-canto':
       return { seat: evento.seat, tono: 'mata', texto: '¡TE LO MATO!' }
     case 'mesa-cantada':
-      return { seat: evento.seat, tono: 'mesa', texto: `¡MESA CANTADA! +${evento.points}` }
+      return { seat: evento.seat, tono: 'mesa', texto: `¡ACERTÓ EL ${evento.number}! +${evento.points}` }
     case 'mal-echada':
       return { seat: evento.seat, tono: 'suave', texto: 'mal echada, +1' }
+    // Nadie te lo mató: el canto se te ve y los puntos entran ya.
+    case 'canto-cobrado':
+      return {
+        seat: evento.seats[0],
+        tono: 'visto',
+        texto: `¡${nombreCanto(evento.canto).toUpperCase()} VISTA! +${evento.points}`,
+      }
     default:
       return null
   }
@@ -64,17 +71,25 @@ export function burbujaVictima(evento) {
   return { seat: evento.victim, tono: 'perdido', texto: `${nombreCanto(evento.canto)} anulado` }
 }
 
+/** El cartelón que se planta en medio de la mesa. Para lo que corta el ritmo. */
+export function cartelDe(evento) {
+  switch (evento.type) {
+    case 'reparto-parcial':
+      return { tono: 'ronda', texto: `Ronda ${evento.deals}` }
+    case 'fin-mano':
+      return { tono: 'ronda', texto: `Fin de la mano ${evento.hand}` }
+    default:
+      return null
+  }
+}
+
 /** Lo que no es de nadie en particular: una línea discreta bajo la mesa. */
 export function lineaDe(evento) {
   switch (evento.type) {
-    case 'reparto-parcial':
-      return 'Tres cartas más para cada uno'
     case 'ultimas':
       return 'Las últimas cartas de la mesa se las lleva quien capturó de último'
     case 'canto-anulado':
       return `${nombreCanto(evento.canto)} repetido: se pisan y no cobra nadie`
-    case 'fin-mano':
-      return 'Fin de la mano'
     default:
       return null
   }
