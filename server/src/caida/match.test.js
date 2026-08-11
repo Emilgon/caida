@@ -524,13 +524,13 @@ describe("mata canto", () => {
     const canto = applyMove(match, 1, { type: "jugar", card: "oros-5", cantar: true });
     assert.equal(canto.hand.declaredCantos.length, 1);
     assert.equal(canto.hand.pendingCanto, null, "la carta cantada se fue a su monton");
-    // 1 de la caida del 5, y la ronda se cobra en el acto porque nadie la
-    // puede matar: la carta cantada ya no esta en la mesa.
-    assert.equal(canto.scores[1], 2);
-    assert.equal(canto.hand.declaredCantos[0].paid, true);
+    assert.equal(canto.hand.declaredCantos[0].safe, true, "nadie se lo puede matar");
+    // Solo 1, el de la caida del 5: la Ronda espera a que suelte el otro 5.
+    assert.equal(canto.scores[1], 1);
+    assert.equal(canto.hand.declaredCantos[0].paid, undefined);
   });
 
-  it("si nadie te mata el canto, los puntos entran en ese mismo turno", () => {
+  it("la Ronda no cuenta hasta soltar las dos del par", () => {
     const match = scenario({
       players: 3,
       turn: 1,
@@ -541,15 +541,39 @@ describe("mata canto", () => {
       ],
       table: cards("bastos-12"),
     });
-    const canto = applyMove(match, 1, { type: "jugar", card: "oros-5" });
-    assert.equal(canto.scores[1], 0, "todavia no: falta ver si le caen");
-    assert.equal(canto.hand.declaredCantos[0].paid, undefined);
+    let m = applyMove(match, 1, { type: "jugar", card: "oros-5" });
+    assert.equal(m.scores[1], 0, "todavia no: falta ver si le caen");
 
-    // El de la derecha lanza sin caerle: la ronda ya es suya.
-    const salvado = applyMove(canto, 2, { type: "jugar", card: "oros-10" });
-    assert.equal(salvado.scores[1], 1);
-    assert.equal(salvado.hand.declaredCantos[0].paid, true);
-    assert.ok(salvado.log.some((e) => e.type === "canto-cobrado"));
+    // El de la derecha lanza sin caerle: el canto queda a salvo, pero la
+    // Ronda sigue a medias porque el otro 5 no ha salido.
+    m = applyMove(m, 2, { type: "jugar", card: "oros-10" });
+    assert.equal(m.hand.declaredCantos[0].safe, true);
+    assert.equal(m.scores[1], 0, "le falta el segundo 5");
+
+    m = applyMove(m, 0, { type: "jugar", card: "bastos-1" });
+    m = applyMove(m, 1, { type: "jugar", card: "copas-5" });
+    assert.equal(m.scores[1], 1, "soltadas las dos, la ronda se ve");
+    assert.equal(m.hand.declaredCantos[0].paid, true);
+    assert.ok(m.log.some((e) => e.type === "canto-cobrado"));
+  });
+
+  it("un canto que no es Ronda cobra en cuanto se cierra la ventana", () => {
+    const match = scenario({
+      players: 3,
+      turn: 1,
+      hands: [
+        cards("bastos-1", "bastos-2", "bastos-12"),
+        cards("oros-4", "copas-5", "espadas-6"), // patrulla
+        cards("espadas-7", "oros-10", "copas-11"),
+      ],
+      table: cards("bastos-10"),
+    });
+    const canto = applyMove(match, 1, { type: "jugar", card: "oros-4" });
+    assert.equal(canto.hand.declaredCantos[0].type, "patrulla");
+    assert.equal(canto.scores[1], 0);
+
+    const salvado = applyMove(canto, 2, { type: "jugar", card: "espadas-7" });
+    assert.equal(salvado.scores[1], 6, "la patrulla no espera a nada mas");
   });
 
   it("cantar con la ultima carta de la tanda ya no se puede matar", () => {

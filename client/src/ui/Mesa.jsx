@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, LayoutGroup, MotionConfig, motion } from 'motion/react'
 
-import Carta, { Dorso, RETIRADA, VUELO } from '../cartas/Carta.jsx'
+import Carta, { Dorso, VUELO } from '../cartas/Carta.jsx'
 import Jugador from './Jugador.jsx'
 import Marcador from './Marcador.jsx'
+import Recogida from './Recogida.jsx'
 import Reparto, { SECUENCIA } from './Reparto.jsx'
 import { alternarSilencio, estaEnSilencio, sonido } from '../sonido.js'
 import {
@@ -25,15 +26,6 @@ const POSICIONES = {
   4: ['yo', 'derecha', 'arriba', 'izquierda'],
 }
 
-// Hacia dónde salen volando las cartas capturadas, según dónde esté sentado
-// quien capturó. En píxeles, relativo al centro de la mesa.
-const RUMBO = {
-  yo: { x: 0, y: 340 },
-  arriba: { x: 0, y: -300 },
-  izquierda: { x: -560, y: -40 },
-  derecha: { x: 560, y: -40 },
-}
-
 // Cuánto se queda en pantalla lo que acaba de pasar. Va con el ritmo de los
 // bots (2,5 s) para que dé tiempo a leerlo y no se amontone.
 const DURACION_BURBUJA = 2600
@@ -43,8 +35,7 @@ export default function Mesa({ room, game, acciones, onSalir }) {
   const [resaltadas, setResaltadas] = useState([])
   const [burbujas, setBurbujas] = useState({}) // asiento -> aviso
   const [linea, setLinea] = useState(null)
-  const [rumbo, setRumbo] = useState(RUMBO.arriba) // hacia dónde salen las capturadas
-  const [ordenSalida, setOrdenSalida] = useState({}) // id -> turno de salida
+  const [recogida, setRecogida] = useState(null) // el recorrido de una captura
   const [golpe, setGolpe] = useState(null) // 'caida' | 'mesa'
   const [caida, setCaida] = useState(null) // el cartelón de la caída
   const [cartel, setCartel] = useState(null) // "Ronda 2", fin de mano…
@@ -55,8 +46,49 @@ export default function Mesa({ room, game, acciones, onSalir }) {
   const vistos = useRef(null)
   const eraMiTurno = useRef(false)
   const relojes = useRef([])
+  // Dónde está cada carta de la mesa y cada jugador, para poder medir el
+  // recorrido de una captura antes de que las cartas desaparezcan.
+  const cartasEnMesa = useRef(new Map())
+  const bannersRef = useRef(new Map())
+
+  /**
+   * Mide en pantalla el recorrido de una captura: de dónde sale la carta
+   * jugada, por qué cartas pasa y dónde acaba. Se llama en el instante en que
+   * llega el evento, que es cuando las cartas todavía están en su sitio.
+   */
+  const medirRecogida = useCallback((evento) => {
+    const nodos = cartasEnMesa.current
+    const paradas = evento.taken
+      .map((id) => {
+        const nodo = nodos.get(id)
+        if (!nodo) return null
+        const r = nodo.getBoundingClientRect()
+        return { id, carta: cartaDeId(id), x: r.left, y: r.top, ancho: r.width, alto: r.height }
+      })
+      .filter(Boolean)
+    if (paradas.length === 0) return null
+
+    // Sale del asiento de quien jugó, y acaba en su montón.
+    const banner = bannersRef.current.get(evento.seat)?.getBoundingClientRect()
+    const salida = banner
+      ? { x: banner.left + banner.width / 2 - paradas[0].ancho / 2, y: banner.top }
+      : { x: paradas[0].x, y: paradas[0].y - 140 }
+
+    return {
+      id: `${evento.seat}-${evento.card}-${Date.now()}`,
+      carta: cartaDeId(evento.card),
+      origen: { ...salida, ancho: paradas[0].ancho, alto: paradas[0].alto },
+      paradas,
+      destino: { ...salida },
+    }
+  }, [])
 
   const nombre = useCallback((seat) => room.seats[seat]?.name ?? `Asiento ${seat + 1}`, [room])
+  // Cada pareja tiene su color; los avisos salen del color de quien los hizo.
+  const equipoDe = useCallback(
+    (seat) => game?.teams?.findIndex((equipo) => equipo.includes(seat)) ?? 0,
+    [game],
+  )
   const mano = game?.hand
   const cantos = mano?.cantos ?? []
   const miTurno = game?.legalMoves?.length > 0 && game.phase === 'juego'
@@ -107,13 +139,12 @@ export default function Mesa({ room, game, acciones, onSalir }) {
       const texto = lineaDe(evento)
       if (texto) ultimaLinea = texto
 
-      // Quien capturó decide hacia dónde salen volando las cartas, y en qué
-      // orden: la que jugó pasa por encima de cada una, y se las va llevando
-      // de una en una, no todas de golpe.
+      // La carta jugada recorre la mesa recogiendo una por una. Hay que medir
+      // dónde está cada carta ANTES de que React las quite de la pantalla, y
+      // eso solo se puede aquí, en el momento en que llega el evento.
       if (evento.type === 'caida' || evento.type === 'recoger') {
-        setRumbo(RUMBO[posicionDe(evento.seat)] ?? RUMBO.arriba)
-        setOrdenSalida(Object.fromEntries(evento.taken.map((id, i) => [id, i])))
-        enUnRato(() => setOrdenSalida({}), 1600)
+        const recorrido = medirRecogida(evento)
+        if (recorrido) setRecogida(recorrido)
 
         if (evento.type === 'caida') {
           // El cartel de la caída: qué carta le cayó a cuál, en el centro.
@@ -132,10 +163,10 @@ export default function Mesa({ room, game, acciones, onSalir }) {
         enUnRato(() => setGolpe(null), 1400)
       }
 
-      const cartel = cartelDe(evento)
+      const cartel = cartelDe(evento, nombre, equipoDe)
       if (cartel) {
-        setCartel({ ...cartel, id: `${game.eventCount}` })
-        enUnRato(() => setCartel(null), 2000)
+        setCartel({ ...cartel, id: `${game.eventCount}-${evento.type}` })
+        enUnRato(() => setCartel(null), 2400)
       }
 
     }
@@ -156,7 +187,7 @@ export default function Mesa({ room, game, acciones, onSalir }) {
       setLinea(ultimaLinea)
       enUnRato(() => setLinea((actual) => (actual === ultimaLinea ? null : actual)), DURACION_LINEA)
     }
-  }, [game, enUnRato, posicionDe, nombre])
+  }, [game, enUnRato, posicionDe, nombre, equipoDe, medirRecogida])
 
   // --- Alarma de turno -----------------------------------------------------
   useEffect(() => {
@@ -247,6 +278,10 @@ export default function Mesa({ room, game, acciones, onSalir }) {
           .map(({ puesto, posicion }) => (
             <Jugador
               key={puesto.seat}
+              ref={(nodo) => {
+                if (nodo) bannersRef.current.set(puesto.seat, nodo)
+                else bannersRef.current.delete(puesto.seat)
+              }}
               puesto={puesto}
               game={game}
               posicion={posicion}
@@ -292,18 +327,16 @@ export default function Mesa({ room, game, acciones, onSalir }) {
                       key={carta.id}
                       carta={carta}
                       vuela
+                      ref={(nodo) => {
+                        if (nodo) cartasEnMesa.current.set(carta.id, nodo)
+                        else cartasEnMesa.current.delete(carta.id)
+                      }}
                       estado={resaltadas.includes(carta.id) ? 'capturable' : ''}
                       className={mano?.lastPlayed?.id === carta.id ? 'carta-cayendo' : ''}
-                      exit={{
-                        ...rumbo,
-                        scale: 0.45,
-                        opacity: 0,
-                        rotate: 14,
-                        // Se van de una en una, en el orden en que se
-                        // arrastran: primero la del valor jugado, luego la
-                        // siguiente de la escalera, y así.
-                        transition: { ...RETIRADA, delay: (ordenSalida[carta.id] ?? 0) * 0.22 },
-                      }}
+                      // Al capturar, la carta desaparece sin más: de llevársela
+                      // se encarga la animación del recorrido, que la pinta
+                      // encima en su sitio exacto.
+                      exit={{ opacity: 0, transition: { duration: 0.01 } }}
                       transition={VUELO}
                     />
                   ))}
@@ -345,13 +378,16 @@ export default function Mesa({ room, game, acciones, onSalir }) {
           {cartel && (
             <motion.div
               key={cartel.id}
-              className={`cartel cartel-${cartel.tono}`}
+              className={`cartel cartel-${cartel.tono} ${
+                cartel.equipo !== undefined ? `cartel-pareja-${cartel.equipo}` : ''
+              }`}
               initial={{ opacity: 0, scale: 0.7 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.2 }}
               transition={{ type: 'spring', stiffness: 200, damping: 20 }}
             >
-              {cartel.texto}
+              <span className="cartel-texto">{cartel.texto}</span>
+              {cartel.pie && <span className="cartel-pie">{cartel.pie}</span>}
             </motion.div>
           )}
         </AnimatePresence>
@@ -374,6 +410,10 @@ export default function Mesa({ room, game, acciones, onSalir }) {
           .map(({ puesto }) => (
             <Jugador
               key={puesto.seat}
+              ref={(nodo) => {
+                if (nodo) bannersRef.current.set(puesto.seat, nodo)
+                else bannersRef.current.delete(puesto.seat)
+              }}
               puesto={puesto}
               game={game}
               posicion="yo"
@@ -518,6 +558,21 @@ export default function Mesa({ room, game, acciones, onSalir }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* El recorrido de una captura va por encima de todo, en coordenadas de
+          pantalla: la carta jugada pasa por cada una y se las va llevando. */}
+      {recogida && (
+        <div className="recogida" aria-hidden="true">
+          <Recogida
+            key={recogida.id}
+            carta={recogida.carta}
+            origen={recogida.origen}
+            paradas={recogida.paradas}
+            destino={recogida.destino}
+            onFin={() => setRecogida(null)}
+          />
         </div>
       )}
 

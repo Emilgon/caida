@@ -41,26 +41,13 @@ export function burbujaDe(evento) {
       return evento.mesaLimpia
         ? { seat: evento.seat, tono: 'mesa', texto: `¡MESA LIMPIA! +${evento.points}` }
         : { seat: evento.seat, tono: 'suave', texto: `recoge ${evento.taken.length + 1}` }
-    case 'canto':
-      return {
-        seat: evento.seat,
-        tono: 'canto',
-        texto: `¡${nombreCanto(evento.canto).toUpperCase()}! ${evento.points}`,
-      }
     case 'mata-canto':
       return { seat: evento.seat, tono: 'mata', texto: '¡TE LO MATO!' }
-    case 'mesa-cantada':
-      return { seat: evento.seat, tono: 'mesa', texto: `¡ACERTÓ EL ${evento.number}! +${evento.points}` }
     case 'mal-echada':
       return { seat: evento.seat, tono: 'suave', texto: 'mal echada, +1' }
-    // Nadie te lo mató: el canto se te ve y los puntos entran ya.
-    case 'canto-cobrado':
-      return {
-        seat: evento.seats[0],
-        tono: 'visto',
-        texto: `¡${nombreCanto(evento.canto).toUpperCase()} VISTA! +${evento.points}`,
-      }
     default:
+      // Los cantos y los aciertos salen en grande en el centro (ver
+      // `cartelDe`), no en una burbujita al lado del jugador.
       return null
   }
 }
@@ -71,13 +58,53 @@ export function burbujaVictima(evento) {
   return { seat: evento.victim, tono: 'perdido', texto: `${nombreCanto(evento.canto)} anulado` }
 }
 
-/** El cartelón que se planta en medio de la mesa. Para lo que corta el ritmo. */
-export function cartelDe(evento) {
+const ORDINALES = ['', '1ra', '2da', '3ra', '4ta', '5ta', '6ta', '7ma', '8va']
+
+/**
+ * El cartelón que se planta en medio de la mesa.
+ *
+ * `equipo` colorea el aviso con el color de la pareja que lo hizo, para saber
+ * de un vistazo quién fue sin leer el nombre. Los de nadie van en dorado.
+ */
+export function cartelDe(evento, quien, equipoDe) {
   switch (evento.type) {
+    // Se reparten tres cartas más: empieza otra repartición. Se cuentan por
+    // mano, así que vuelven al 1 cuando el reparto pasa a otro jugador.
     case 'reparto-parcial':
-      return { tono: 'ronda', texto: `Ronda ${evento.deals}` }
+      return { tono: 'neutro', texto: `${ORDINALES[evento.deals] ?? evento.deals}ª repartición` }
+    case 'mesa-puesta':
+      return { tono: 'neutro', texto: '1ra repartición' }
     case 'fin-mano':
-      return { tono: 'ronda', texto: `Fin de la mano ${evento.hand}` }
+      return { tono: 'neutro', texto: `Fin de la mano ${evento.hand}` }
+
+    // Acertó el número al poner una carta de la mesa.
+    case 'mesa-cantada':
+      return {
+        tono: 'equipo',
+        equipo: equipoDe(evento.seat),
+        texto: `¡Acertó el ${evento.number}!`,
+        pie: quien(evento.seat),
+      }
+
+    // El canto, en cuanto se declara: todo el mundo tiene que enterarse.
+    case 'canto':
+      return {
+        tono: 'equipo',
+        equipo: equipoDe(evento.seat),
+        texto: `${nombreCanto(evento.canto)} de ${quien(evento.seat)}`,
+        pie: `${evento.points} puntos`,
+      }
+
+    // La Ronda es la única que se "ve": no cuenta hasta soltar las dos del par.
+    case 'canto-cobrado':
+      if (evento.canto !== 'ronda') return null
+      return {
+        tono: 'equipo',
+        equipo: evento.team,
+        texto: '¡Ronda vista!',
+        pie: `${quien(evento.seats[0])} · +${evento.points}`,
+      }
+
     default:
       return null
   }

@@ -14,6 +14,8 @@ export default function Jugador({
   esRepartidor,
   cantos,
   aviso,
+  // Para medir dónde está: las cartas capturadas vuelan hasta aquí.
+  ref,
 }) {
   if (!puesto || puesto.empty) return null
   const { seat, name, bot, connected, you } = puesto
@@ -22,6 +24,7 @@ export default function Jugador({
 
   return (
     <div
+      ref={ref}
       className={[
         'jugador',
         `jugador-${posicion}`,

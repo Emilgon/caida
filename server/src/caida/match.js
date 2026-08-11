@@ -1,6 +1,6 @@
 import { GameError } from "./errors.js";
 import { caidaPoints, createDeck, nextValue } from "./deck.js";
-import { compareRank, detectCanto } from "./cantos.js";
+import { CANTOS, compareRank, detectCanto } from "./cantos.js";
 import { createRng, normalizeSeed, shuffle } from "./rng.js";
 
 export const MODES = ["tradicional", "mayor-canto"];
@@ -76,6 +76,17 @@ export function resolveCapture(table, card) {
  */
 function pushLog(match, entry) {
   match.log.push({ hand: match.handNumber, ...entry });
+}
+
+/**
+ * Lo que se puede enseñar de un canto declarado. `esperaCartas` lleva los ids
+ * del par de una Ronda, que siguen en la mano de quien canto: mandarlo seria
+ * enseñarle sus cartas a todo el mundo. Va por aqui SIEMPRE, no carta por
+ * carta en cada sitio, para que no se escape en ninguno.
+ */
+function cantoPublico(canto) {
+  const { esperaCartas, ...publico } = canto;
+  return publico;
 }
 
 function addScore(match, team, points, reason, extra = {}) {
@@ -363,9 +374,19 @@ function countCard(match, { numero }) {
  * Cobra un canto que ya esta a salvo. En Tradicional esto pasa en cuanto se
  * cierra la ventana del mata canto, no al final de la mano: si cantas Patrulla
  * y el de tu derecha no te cae, los 6 puntos son tuyos ya, en el marcador.
+ *
+ * La Ronda es la excepcion: no cuenta hasta que sueltas las DOS del par. Se
+ * canta al jugar la primera, pero mientras la otra siga en tu mano el canto
+ * esta a medias. Cuando cae la segunda y nadie te ha caido, ahi se ve.
  */
 function pagarCanto(match, canto) {
   if (canto.killed || canto.paid) return;
+  if (!canto.safe) return;
+
+  const enMano = match.hand.hands[canto.seat] ?? [];
+  const faltan = (canto.esperaCartas ?? []).filter((id) => enMano.some((c) => c.id === id));
+  if (faltan.length > 0) return;
+
   canto.paid = true;
   const team = teamOf(match, canto.seat);
   pushLog(match, {
@@ -397,7 +418,13 @@ function resolveCantos(match, soloTanda = null) {
   if (pendientes.length === 0) return;
 
   if (match.mode === "tradicional") {
-    for (const canto of pendientes) pagarCanto(match, canto);
+    for (const canto of pendientes) {
+      // Se acaba la tanda: ya nadie puede matarlo y las cartas que faltaban
+      // por soltar se sueltan igual, asi que el canto se ve entero.
+      canto.safe = true;
+      canto.esperaCartas = [];
+      pagarCanto(match, canto);
+    }
     return;
   }
 
@@ -497,7 +524,7 @@ function closeHand(match) {
     number: match.handNumber,
     dealer: hand.dealer,
     cards,
-    cantos: hand.declaredCantos.map((canto) => ({ ...canto })),
+    cantos: hand.declaredCantos.map(cantoPublico),
     scores: [...match.scores],
   };
   pushLog(match, { type: "fin-mano", hand: match.handNumber });
@@ -566,8 +593,10 @@ function playCard(match, seat, plan, declare) {
       cantado.killed = true;
       cantado.killedBy = seat;
       pushLog(next, { type: "mata-canto", seat, victim: pending.seat, canto: cantado.type });
-    } else if (next.mode === "tradicional") {
-      pagarCanto(next, cantado);
+    } else {
+      // Sobrevivio la ventana. Ya no se lo puede matar nadie.
+      cantado.safe = true;
+      if (next.mode === "tradicional") pagarCanto(next, cantado);
     }
   }
 
@@ -581,6 +610,10 @@ function playCard(match, seat, plan, declare) {
       points: canto.points,
       rank: canto.rank,
       killed: false,
+      safe: false,
+      // La Ronda no cuenta hasta soltar las dos del par. Los demas cantos no
+      // esperan a nada mas que a que se cierre la ventana del mata canto.
+      esperaCartas: canto.type === CANTOS.RONDA ? [...canto.cards] : [],
     };
     hand.declaredCantos.push(entry);
     hand.declared[seat] = true;
@@ -590,9 +623,17 @@ function playCard(match, seat, plan, declare) {
     // haciendo caida, la carta se fue a tu monton, nadie te la puede matar y
     // los puntos son tuyos ya mismo.
     if (capture) {
+      entry.safe = true;
       if (next.mode === "tradicional") pagarCanto(next, entry);
     } else {
       hand.pendingCanto = { id: entry.id, seat, card: card.id, value: card.value };
+    }
+  }
+
+  // Al soltar una carta puede completarse una Ronda que estaba a medias.
+  if (next.mode === "tradicional") {
+    for (const canto of hand.declaredCantos) {
+      if (canto.seat === seat) pagarCanto(next, canto);
     }
   }
 
@@ -732,7 +773,7 @@ export function publicStateFor(match, seat) {
       deckLeft: hand.deck.length,
       lastPlayed: hand.lastPlayed ? { ...hand.lastPlayed } : null,
       lastCapturer: hand.lastCapturer,
-      cantos: hand.declaredCantos.map((canto) => ({ ...canto })),
+      cantos: hand.declaredCantos.map(cantoPublico),
       pendingCanto: hand.pendingCanto
         ? { seat: hand.pendingCanto.seat, card: hand.pendingCanto.card }
         : null,

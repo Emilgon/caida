@@ -236,6 +236,9 @@ export default function Carta({
   animate,
   exit,
   transition,
+  // Para poder medir dónde está en pantalla: hace falta para animar el
+  // recorrido de una captura antes de que la carta desaparezca.
+  ref,
 }) {
   const { suit: palo, value: valor } = carta
   const interactiva = typeof onClick === 'function'
@@ -246,6 +249,7 @@ export default function Carta({
 
   return (
     <Etiqueta
+      ref={ref}
       type={interactiva ? 'button' : undefined}
       layout={vuela}
       layoutId={vuela ? carta.id : undefined}
