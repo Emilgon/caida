@@ -9,6 +9,9 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import cors from "cors";
 
+import { registerRoomHandlers } from "./src/rooms/handlers.js";
+import { createStore } from "./src/rooms/store.js";
+
 const PORT = process.env.PORT || 3002;
 
 // El header Origin del navegador nunca lleva barra final ni mayusculas en el host,
@@ -32,20 +35,17 @@ const corsOptions = {
 const app = express();
 app.use(cors(corsOptions));
 
+const store = createStore();
+
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", mesas: store.size });
 });
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: corsOptions });
 
-// TEMPORAL (Fase 0): solo confirma que el pipeline cliente-servidor
-// funciona de punta a punta. Se reemplaza por el registerRoomHandlers real
-// en la Fase 2, una vez el motor de reglas (Fase 1) este listo.
-io.on("connection", (socket) => {
-  console.log(`conexion de prueba: ${socket.id}`);
-  socket.emit("eco", { mensaje: "servidor de Caída activo" });
-});
+registerRoomHandlers(io, { store });
+store.startSweeper();
 
 httpServer.listen(PORT, () => {
   console.log(`servidor escuchando en puerto ${PORT}`);

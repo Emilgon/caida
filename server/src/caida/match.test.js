@@ -825,6 +825,26 @@ describe("publicStateFor", () => {
     }
   });
 
+  it("avisa si todavia queda carta con la que declarar el canto", () => {
+    const match = scenario({
+      turn: 1,
+      hands: [cards("bastos-1", "bastos-2", "bastos-3"), cards("oros-5", "copas-5", "espadas-2")],
+      table: cards("bastos-12"),
+    });
+    assert.equal(publicStateFor(match, 1).hand.myCantoPlayable, true);
+
+    // Jugadas las dos del par, el canto ya no se puede declarar aunque
+    // `myCanto` siga describiendolo.
+    let next = applyMove(match, 1, { type: "jugar", card: "oros-5" });
+    next = applyMove(next, 0, { type: "jugar", card: next.hand.hands[0][0].id });
+    next = applyMove(next, 1, { type: "jugar", card: "copas-5" });
+
+    const view = publicStateFor(next, 1);
+    assert.equal(view.hand.myCanto.type, "ronda");
+    assert.equal(view.hand.myCantoPlayable, false);
+    assert.ok(legalMoves(next, 1).every((move) => move.canDeclare === false));
+  });
+
   it("si expone lo propio, la mesa y el marcador", () => {
     const match = dealt({ players: 2, seed: "vista" });
     const seat = match.hand.turn;

@@ -407,6 +407,10 @@ function closeHand(match) {
     hand.captured[hand.lastCapturer].push(...hand.table);
     hand.table = [];
   }
+  // La mesa quedo vacia, asi que ya no hay carta recien lanzada. Importa
+  // porque si la partida se gana justo aqui, este estado es el que se queda
+  // en pantalla.
+  hand.lastPlayed = null;
 
   resolveCantos(match);
   const cards = countCards(match);
@@ -608,6 +612,14 @@ export function publicStateFor(match, seat) {
       myCards: (hand.hands[seat] ?? []).map((card) => ({ ...card })),
       myCanto: hand.canto[seat] ? { ...hand.canto[seat] } : null,
       myCantoDeclared: hand.declared[seat] ?? false,
+      // `myCanto` sigue describiendo el canto de la tanda aunque ya hayas
+      // jugado parte de sus cartas. Esto dice si TODAVIA queda alguna con la
+      // que declararlo, que es lo que la interfaz necesita para resaltarlas.
+      myCantoPlayable: Boolean(
+        hand.canto[seat] &&
+          !hand.declared[seat] &&
+          (hand.hands[seat] ?? []).some((card) => hand.canto[seat].cards.includes(card.id)),
+      ),
       cardsLeft: hand.hands.map((cards) => cards.length),
       capturedCount: hand.captured.map((cards) => cards.length),
       deckLeft: hand.deck.length,

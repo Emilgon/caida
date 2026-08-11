@@ -3,8 +3,8 @@
 Plataforma web para jugar Caída (juego de cartas venezolano) en tiempo real
 con personas reales, 2, 3 o 4 jugadores.
 
-**Estado:** Fase 1 lista. El motor de reglas está completo y probado; falta
-la capa de salas por socket (Fase 2) y la interfaz (Fase 3).
+**Estado:** Fases 1 y 2 listas. El motor de reglas y las salas por socket
+están completos y probados; falta la interfaz (Fase 3).
 
 ## Estructura
 
@@ -12,6 +12,8 @@ la capa de salas por socket (Fase 2) y la interfaz (Fase 3).
   del juego.
   - `src/caida/` — motor de reglas, lógica pura sin dependencia de la red.
     Ver [REGLAS.md](REGLAS.md).
+  - `src/rooms/` — salas: quién está sentado dónde, reconexión, y el puente
+    con los sockets.
 - `client/` — React + Vite.
 
 ## El motor
@@ -34,14 +36,68 @@ La capa de red solo debe importar desde `src/caida/index.js`.
 El azar va con semilla (`seed`, número o texto), guardada en la partida: con
 la semilla y la lista de jugadas se reproduce una partida entera para depurar.
 
+## Las salas
+
+En `server/src/rooms/`. Mesas **privadas por código**: creas una, el servidor
+te da un código de 6 letras y quien lo tenga entra. Se llenan por orden de
+llegada y el líder (quien la creó) arrastra a la gente de asiento para armar
+las parejas, porque con 4 los asientos `0`+`2` juegan contra `1`+`3`.
+
+Cada jugador tiene un **token** que su navegador guarda. Es lo que le devuelve
+su asiento si recarga la página o se le cae la señal: mientras tanto la mesa
+se congela y los demás ven a quién se está esperando. Pasado un minuto (o de
+una vez, si la persona se fue a propósito), los que siguen conectados pueden
+cancelar la mesa, pero hacen falta **todos** — si no, cualquiera podría
+disolver una partida que va perdiendo.
+
+El token es un secreto: con el de otro se podrían ver sus cartas, así que
+nunca viaja a los demás jugadores.
+
+### Protocolo
+
+Todo lo que manda el cliente lleva callback de respuesta:
+`{ ok: true, ... }` o `{ ok: false, error: { code, message } }`, con el
+`message` en español listo para mostrar.
+
+| Evento | Quién | Qué hace |
+|---|---|---|
+| `sala:crear` | cualquiera | `{ name, players, target, mode }` → `{ code, playerId }` |
+| `sala:entrar` | cualquiera | `{ code, name, playerId? }`. Con `playerId` es reconexión |
+| `sala:asiento` | líder | `{ from, to }`, arrastrar y soltar |
+| `sala:config` | líder | `{ players, target, mode }`, antes de empezar |
+| `sala:empezar` | líder | mesa llena y todos conectados |
+| `juego:jugada` | quien tenga el turno | `{ move }`, tal cual salió de `legalMoves` |
+| `sala:revancha` | líder | otra partida, mismos asientos |
+| `sala:cancelar` | los conectados | voto para disolver una mesa colgada |
+| `sala:salir` | cualquiera | irse |
+
+El servidor emite `sala:estado` con `{ room, game }` **por socket**, no a la
+sala entera: la vista de cada quien es distinta y las cartas de uno no pueden
+salir en el mensaje de otro. También emite `sala:cerrada` cuando la mesa se
+cancela.
+
+La semilla de la baraja **la pone el servidor**. Si la eligiera el cliente
+sabría de antemano cómo queda el mazo.
+
+Las salas viven en memoria. Si el servidor se reinicia — en Render free se
+duerme por inactividad — las partidas en curso se pierden. Asumido para el
+v1; persistirlas es meter una base de datos.
+
+## Tests
+
 ```bash
 cd server
 npm test
 ```
 
-94 tests: cada regla de [REGLAS.md](REGLAS.md) por separado y partidas
-completas simuladas para 2, 3 y 4 jugadores en los dos modos, verificando en
-cada jugada que no se pierde ni se duplica una carta y que nadie ve lo ajeno.
+- **Reglas**: cada regla de [REGLAS.md](REGLAS.md) por separado.
+- **Partidas simuladas**: 2, 3 y 4 jugadores en los dos modos, comprobando en
+  cada jugada que las 40 cartas siguen ahí sin duplicarse, que el marcador
+  nunca baja y que nadie ve lo ajeno.
+- **Salas**: entrar, armar parejas, empezar, caerse, volver, cancelar.
+- **End to end**: servidor Socket.IO real y clientes reales por TCP jugando
+  una partida completa de 4, contrastando en cada jugada lo que recibió cada
+  cliente contra el estado verdadero del servidor.
 
 ## Correr en local
 

@@ -30,3 +30,23 @@ esto resume lo que hay que replicar:
 No hace falta copiar código del dominó — la mecánica de Caída no se parece
 en nada (cartas vs fichas, captura vs cadena). Esto es solo el "cómo se
 organiza el código", no el "qué hace".
+
+## Las salas (Fase 2)
+
+`server/src/rooms/` sigue el mismo patrón un nivel más arriba:
+
+- **La lógica de sala tampoco sabe de sockets**: `room.js` son funciones
+  puras (quién se sienta, quién manda, quién se cayó) que devuelven una sala
+  nueva. `handlers.js` es el ÚNICO archivo que toca Socket.IO, y solo traduce
+  eventos a llamadas de `room.js`. Ninguna regla vive ahí.
+- **Un error de sala es un `GameError`** igual que uno de juego, con `code` y
+  mensaje en español. El cliente los recibe iguales.
+- **El servidor decide todo lo que da ventaja**: la semilla de la baraja, el
+  turno, qué es legal. Nada de eso llega del cliente.
+- **Cada socket recibe SU vista** (`publicRoom` + `publicStateFor`). Nunca se
+  emite un estado común a la sala entera, porque llevaría cartas ajenas.
+- **El token de jugador es un secreto**, no un índice. Con el de otro se
+  jugaría en su lugar, así que no aparece en la vista de nadie más.
+- **Tests antes que la UI, también aquí**: además de los unitarios, hay un
+  end to end con servidor y clientes de verdad que juega una partida
+  completa por la red.

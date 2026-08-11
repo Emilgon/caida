@@ -61,6 +61,13 @@ function playFullMatch({ players, mode = "tradicional", target = 24, seed, botSe
       assert.equal(new Set(ids).size, 40, "hay cartas duplicadas");
     }
 
+    // La "carta recien lanzada" siempre esta de verdad en la mesa: es lo que
+    // decide si el siguiente puede hacer caida.
+    if (match.hand?.lastPlayed) {
+      const onTable = match.hand.table.some((card) => card.id === match.hand.lastPlayed.id);
+      assert.ok(onTable, `lastPlayed ${match.hand.lastPlayed.id} no esta en la mesa`);
+    }
+
     // El marcador nunca baja.
     match.scores.forEach((score, team) => {
       assert.ok(score >= previousScores[team], `el equipo ${team} perdio puntos`);
