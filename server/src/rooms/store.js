@@ -62,7 +62,9 @@ export function createStore({ now = () => Date.now() } = {}) {
       const cutoff = now() - ttl;
       const removed = [];
       for (const [code, room] of rooms) {
-        const alive = room.seats.some((seat) => seat && seat.connected);
+        // Los bots no cuentan como vida: una mesa donde solo quedan bots esta
+        // tan muerta como una vacia.
+        const alive = room.seats.some((seat) => seat && seat.connected && !seat.bot);
         if (room.phase === "cancelada" || (!alive && room.updatedAt < cutoff)) {
           rooms.delete(code);
           removed.push(code);

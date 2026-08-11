@@ -1,6 +1,8 @@
 import { GameError } from "../caida/index.js";
+import { createBotDriver } from "../bots/driver.js";
 import { generatePlayerId, normalizeCode } from "./codes.js";
 import {
+  addBot,
   applyGameMove,
   disconnectPlayer,
   gameViewFor,
@@ -8,6 +10,7 @@ import {
   moveSeat,
   publicRoom,
   rematch,
+  removeBot,
   startMatch,
   updateConfig,
   voteCancel,
@@ -29,7 +32,7 @@ function fail(ack, error) {
   reply(ack, { ok: false, error: { code: "ERROR_INTERNO", message: "Algo se rompio en el servidor." } });
 }
 
-export function registerRoomHandlers(io, { store, seedFor } = {}) {
+export function registerRoomHandlers(io, { store, seedFor, botDelay } = {}) {
   if (!store) throw new Error("registerRoomHandlers necesita un store de salas");
 
   // A cada socket le toca SU propia vista: las cartas de uno no pueden salir
@@ -43,6 +46,16 @@ export function registerRoomHandlers(io, { store, seedFor } = {}) {
         game: gameViewFor(room, playerId),
       });
     }
+  }
+
+  const bots = createBotDriver({ store, broadcast, ...(botDelay === undefined ? {} : { delay: botDelay }) });
+
+  // Cada vez que la sala cambia hay que mirar si ahora le toca a un bot.
+  async function publish(room) {
+    store.save(room);
+    await broadcast(room);
+    bots.schedule(room.code);
+    return room;
   }
 
   // Si la persona tiene dos pestanas abiertas, cerrar una no la deja "caida".
@@ -66,8 +79,7 @@ export function registerRoomHandlers(io, { store, seedFor } = {}) {
       socket.data.playerId = playerId;
       socket.data.code = room.code;
       await socket.join(room.code);
-      store.save(room);
-      await broadcast(room);
+      await publish(room);
     }
 
     socket.on("sala:crear", async (payload = {}, ack) => {
@@ -107,8 +119,27 @@ export function registerRoomHandlers(io, { store, seedFor } = {}) {
           from: payload.from,
           to: payload.to,
         });
-        store.save(room);
-        await broadcast(room);
+        await publish(room);
+        reply(ack, { ok: true });
+      } catch (error) {
+        fail(ack, error);
+      }
+    });
+
+    socket.on("sala:bot-agregar", async (payload = {}, ack) => {
+      try {
+        const room = addBot(roomOf(socket), { hostId: socket.data.playerId, seat: payload.seat });
+        await publish(room);
+        reply(ack, { ok: true });
+      } catch (error) {
+        fail(ack, error);
+      }
+    });
+
+    socket.on("sala:bot-quitar", async (payload = {}, ack) => {
+      try {
+        const room = removeBot(roomOf(socket), { hostId: socket.data.playerId, seat: payload.seat });
+        await publish(room);
         reply(ack, { ok: true });
       } catch (error) {
         fail(ack, error);
@@ -123,8 +154,7 @@ export function registerRoomHandlers(io, { store, seedFor } = {}) {
           target: payload.target,
           mode: payload.mode,
         });
-        store.save(room);
-        await broadcast(room);
+        await publish(room);
         reply(ack, { ok: true });
       } catch (error) {
         fail(ack, error);
@@ -140,8 +170,7 @@ export function registerRoomHandlers(io, { store, seedFor } = {}) {
           hostId: socket.data.playerId,
           seed: seedFor ? seedFor(current) : undefined,
         });
-        store.save(room);
-        await broadcast(room);
+        await publish(room);
         reply(ack, { ok: true });
       } catch (error) {
         fail(ack, error);
@@ -155,8 +184,7 @@ export function registerRoomHandlers(io, { store, seedFor } = {}) {
           hostId: socket.data.playerId,
           seed: seedFor ? seedFor(current) : undefined,
         });
-        store.save(room);
-        await broadcast(room);
+        await publish(room);
         reply(ack, { ok: true });
       } catch (error) {
         fail(ack, error);
@@ -169,8 +197,7 @@ export function registerRoomHandlers(io, { store, seedFor } = {}) {
           playerId: socket.data.playerId,
           move: payload.move,
         });
-        store.save(room);
-        await broadcast(room);
+        await publish(room);
         reply(ack, { ok: true });
       } catch (error) {
         fail(ack, error);
@@ -180,8 +207,7 @@ export function registerRoomHandlers(io, { store, seedFor } = {}) {
     socket.on("sala:cancelar", async (_payload = {}, ack) => {
       try {
         const room = voteCancel(roomOf(socket), { playerId: socket.data.playerId });
-        store.save(room);
-        await broadcast(room);
+        await publish(room);
         if (room.phase === "cancelada") {
           io.in(room.code).emit("sala:cerrada", { code: room.code, reason: "cancelada" });
           store.close(room.code);
@@ -196,10 +222,9 @@ export function registerRoomHandlers(io, { store, seedFor } = {}) {
       try {
         const current = roomOf(socket);
         const room = disconnectPlayer(current, socket.data.playerId, { left: true });
-        store.save(room);
         await socket.leave(room.code);
         socket.data.code = null;
-        await broadcast(room);
+        await publish(room);
         reply(ack, { ok: true });
       } catch (error) {
         fail(ack, error);
@@ -215,8 +240,9 @@ export function registerRoomHandlers(io, { store, seedFor } = {}) {
       if (await hasOtherSocket(code, playerId, socket.id)) return;
 
       const next = disconnectPlayer(room, playerId);
-      store.save(next);
-      await broadcast(next);
+      // La mesa queda en pausa, asi que los bots tambien esperan.
+      bots.cancel(code);
+      await publish(next);
     });
   });
 }

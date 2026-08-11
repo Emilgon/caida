@@ -28,11 +28,11 @@ async function until(condition, what) {
 }
 
 /** Levanta un servidor completo en un puerto libre. */
-async function startServer({ seed = "semilla-de-prueba" } = {}) {
+async function startServer({ seed = "semilla-de-prueba", botDelay = 0 } = {}) {
   const httpServer = createServer();
   const io = new Server(httpServer, { cors: { origin: true } });
   const store = createStore();
-  registerRoomHandlers(io, { store, seedFor: () => seed });
+  registerRoomHandlers(io, { store, seedFor: () => seed, botDelay });
 
   await new Promise((resolve) => httpServer.listen(0, resolve));
   const { port } = httpServer.address();
@@ -313,6 +313,126 @@ describe("salas por socket", () => {
     host.socket.close();
     await until(() => players[1].state.room.youAreHost, "que Ana quede de lider");
     assert.equal(players[1].state.room.seats[1].host, true);
+  });
+
+  it("una mesa de 4 contra los tres bots, con parejas", async () => {
+    const s = await server();
+    const yo = await s.client("Emilio");
+    const { code } = await ok(yo, "sala:crear", { name: "Emilio", players: 4 });
+
+    for (let i = 0; i < 3; i += 1) await ok(yo, "sala:bot-agregar");
+    await until(() => yo.state.room.full, "que se sienten los bots");
+
+    assert.deepEqual(
+      yo.state.room.seats.map((seat) => seat.name),
+      ["Emilio", "Odaa", "Key", "Toby"],
+    );
+    assert.deepEqual(yo.state.room.seats.map((seat) => seat.bot), [false, true, true, true]);
+    // Emilio (0) hace pareja con Key (2).
+    assert.deepEqual(yo.state.room.teams, [[0, 2], [1, 3]]);
+
+    const lleno = await send(yo, "sala:bot-agregar");
+    assert.equal(lleno.error.code, "SALA_LLENA");
+
+    await ok(yo, "sala:empezar");
+
+    let turnos = 0;
+    while (true) {
+      await until(
+        () => yo.state.game?.legalMoves.length > 0 || yo.state.room.phase === "terminada",
+        "que me toque a mi o que se acabe",
+      );
+      if (yo.state.room.phase === "terminada") break;
+      turnos += 1;
+      assert.ok(turnos < 2000, "la partida no termina");
+      await ok(yo, "juego:jugada", { move: yo.state.game.legalMoves[0] });
+    }
+
+    const truth = s.store.find(code);
+    assert.notEqual(truth.match.winner, null);
+    assert.ok(truth.match.scores[truth.match.winner] >= 24);
+    assert.ok(turnos > 0, "no llegue a jugar");
+
+    // Los tres bots jugaron de verdad, no se quedo la mesa esperandolos.
+    const jugaronBots = new Set(
+      truth.match.log
+        .filter((entry) => ["lanzar", "caida", "recoger"].includes(entry.type))
+        .map((entry) => entry.seat),
+    );
+    for (const seat of [1, 2, 3]) {
+      assert.ok(jugaronBots.has(seat), `el bot del asiento ${seat} nunca jugo`);
+    }
+  });
+
+  it("yo contra un bot en una mesa de 2", async () => {
+    const s = await server();
+    const yo = await s.client("Emilio");
+    const { code } = await ok(yo, "sala:crear", { name: "Emilio", players: 2 });
+    await ok(yo, "sala:bot-agregar");
+    await until(() => yo.state.room.full, "que se siente Odaa");
+    assert.equal(yo.state.room.seats[1].name, "Odaa");
+
+    await ok(yo, "sala:empezar");
+    while (true) {
+      await until(
+        () => yo.state.game?.legalMoves.length > 0 || yo.state.room.phase === "terminada",
+        "mi turno",
+      );
+      if (yo.state.room.phase === "terminada") break;
+      await ok(yo, "juego:jugada", { move: yo.state.game.legalMoves[0] });
+    }
+    assert.notEqual(s.store.find(code).match.winner, null);
+  });
+
+  it("el bot nunca manda mis cartas ni ve las mias", async () => {
+    const s = await server();
+    const yo = await s.client("Emilio");
+    const { code } = await ok(yo, "sala:crear", { name: "Emilio", players: 3 });
+    await ok(yo, "sala:bot-agregar");
+    await ok(yo, "sala:bot-agregar");
+    await ok(yo, "sala:empezar");
+
+    for (let i = 0; i < 12; i += 1) {
+      await until(
+        () => yo.state.game?.legalMoves.length > 0 || yo.state.room.phase === "terminada",
+        "mi turno",
+      );
+      if (yo.state.room.phase === "terminada") break;
+
+      const truth = s.store.find(code);
+      if (truth.match?.hand) {
+        const payload = yo.received.at(-1);
+        for (const seat of [1, 2]) {
+          for (const card of truth.match.hand.hands[seat]) {
+            assert.ok(!payload.includes(JSON.stringify(card.id)), `se filtro ${card.id} del bot`);
+          }
+        }
+      }
+      await ok(yo, "juego:jugada", { move: yo.state.game.legalMoves[0] });
+    }
+  });
+
+  it("quitar un bot deja el asiento libre para una persona", async () => {
+    const s = await server();
+    const yo = await s.client("Emilio");
+    const { code } = await ok(yo, "sala:crear", { name: "Emilio", players: 2 });
+    await ok(yo, "sala:bot-agregar");
+    await until(() => yo.state.room.full, "bot sentado");
+
+    await ok(yo, "sala:bot-quitar", { seat: 1 });
+    await until(() => !yo.state.room.full, "asiento libre");
+
+    const ana = await s.client("Ana");
+    await ok(ana, "sala:entrar", { code, name: "Ana" });
+    await until(() => yo.state.room.seats[1].name === "Ana", "que entre Ana");
+    assert.equal(yo.state.room.seats[1].bot, false);
+  });
+
+  it("solo el lider sienta bots", async () => {
+    const s = await server();
+    const { players } = await tableOf(s, ["Emilio", "Ana", "Luis"]);
+    const negado = await send(players[1], "sala:bot-agregar");
+    assert.equal(negado.error.code, "NO_ERES_LIDER");
   });
 
   it("la revancha reinicia el marcador con la misma gente", async () => {

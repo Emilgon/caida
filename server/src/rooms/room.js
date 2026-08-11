@@ -6,6 +6,8 @@ import { GameError, MODES, TARGETS, applyMove, createMatch, publicStateFor } fro
 // llamadas.
 
 export const MAX_NAME = 20;
+// Tres bots alcanzan para llenar cualquier mesa: tu contra 1, 2 o 3.
+export const BOT_NAMES = ["Odaa", "Key", "Toby"];
 // Cuanto hay que esperar, con alguien caido, antes de poder proponer cancelar.
 // Una recarga de pagina o un tunel del metro tardan segundos; esto da margen.
 export const GRACE_MS = 60_000;
@@ -62,6 +64,17 @@ export function missingPlayers(room) {
     .map((seat) => ({ name: seat.name, left: seat.left }));
 }
 
+/** A quien le toca actuar ahora mismo, o `null` si no hay nada que hacer. */
+export function currentSeat(room) {
+  if (room.phase !== "jugando" || !room.match || room.match.winner !== null) return null;
+  if (isPaused(room)) return null;
+  return room.match.phase === "reparto" ? room.match.dealer : room.match.hand.turn;
+}
+
+export function isBotSeat(room, seat) {
+  return Boolean(room.seats[seat]?.bot);
+}
+
 // ---------------------------------------------------------------------------
 
 export function createRoom({ code, hostId, hostName, players = 4, target = 24, mode = "tradicional", now = Date.now() }) {
@@ -69,7 +82,7 @@ export function createRoom({ code, hostId, hostName, players = 4, target = 24, m
   const name = cleanName(hostName);
 
   const seats = Array.from({ length: players }, () => null);
-  seats[0] = { id: hostId, name, connected: true, left: false, lastSeen: now };
+  seats[0] = { id: hostId, name, bot: false, connected: true, left: false, lastSeen: now };
 
   return {
     code,
@@ -114,7 +127,57 @@ export function joinRoom(room, { playerId, name, now = Date.now() }) {
   const free = next.seats.findIndex((seat) => seat === null);
   if (free === -1) fail("SALA_LLENA", "La mesa ya esta completa.");
 
-  next.seats[free] = { id: playerId, name: cleanName(name), connected: true, left: false, lastSeen: now };
+  next.seats[free] = {
+    id: playerId,
+    name: cleanName(name),
+    bot: false,
+    connected: true,
+    left: false,
+    lastSeen: now,
+  };
+  return next;
+}
+
+/**
+ * Sienta un bot en el primer puesto libre (o en el que se pida). Los bots
+ * siempre cuentan como conectados: no se caen ni hacen esperar a la mesa.
+ */
+export function addBot(room, { hostId, seat, now = Date.now() } = {}) {
+  requireHost(room, hostId);
+  requireLobby(room);
+
+  const target = seat ?? room.seats.findIndex((player) => player === null);
+  if (target === -1) fail("SALA_LLENA", "La mesa ya esta completa.");
+  if (!Number.isInteger(target) || target < 0 || target >= room.seats.length) {
+    fail("ASIENTO_INVALIDO", "Ese asiento no existe en esta mesa.");
+  }
+  if (room.seats[target] !== null) fail("ASIENTO_OCUPADO", "En ese asiento ya hay alguien.");
+
+  const taken = new Set(room.seats.filter((player) => player?.bot).map((player) => player.name));
+  const name = BOT_NAMES.find((candidate) => !taken.has(candidate));
+  if (!name) fail("SIN_BOTS", `Solo hay ${BOT_NAMES.length} bots disponibles.`);
+
+  const next = structuredClone(room);
+  next.seats[target] = {
+    id: `bot:${name.toLowerCase()}`,
+    name,
+    bot: true,
+    connected: true,
+    left: false,
+    lastSeen: now,
+  };
+  next.updatedAt = now;
+  return next;
+}
+
+export function removeBot(room, { hostId, seat, now = Date.now() } = {}) {
+  requireHost(room, hostId);
+  requireLobby(room);
+  if (!room.seats[seat]?.bot) fail("NO_ES_BOT", "En ese asiento no hay un bot.");
+
+  const next = structuredClone(room);
+  next.seats[seat] = null;
+  next.updatedAt = now;
   return next;
 }
 
@@ -140,7 +203,8 @@ export function disconnectPlayer(room, playerId, { now = Date.now(), left = fals
 }
 
 function nextHost(room) {
-  const candidate = room.seats.find((seat) => seat !== null && seat.connected);
+  // Un bot no puede dirigir la mesa.
+  const candidate = room.seats.find((seat) => seat !== null && seat.connected && !seat.bot);
   return candidate ? candidate.id : null;
 }
 
@@ -267,7 +331,8 @@ export function voteCancel(room, { playerId, now = Date.now() }) {
   const next = structuredClone(room);
   if (!next.cancelVotes.includes(playerId)) next.cancelVotes.push(playerId);
 
-  const connected = next.seats.filter((seat) => seat && seat.connected);
+  // Los bots no votan: si contaran, la mesa nunca se podria cancelar.
+  const connected = next.seats.filter((seat) => seat && seat.connected && !seat.bot);
   if (connected.every((seat) => next.cancelVotes.includes(seat.id))) {
     next.phase = "cancelada";
     next.match = null;
@@ -295,6 +360,7 @@ export function publicRoom(room, viewerId, { now = Date.now() } = {}) {
         seat: index,
         empty: false,
         name: player.name,
+        bot: Boolean(player.bot),
         connected: player.connected,
         left: player.left,
         host: player.id === room.hostId,
