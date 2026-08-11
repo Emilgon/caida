@@ -17,7 +17,11 @@ import Carta, { Dorso } from '../cartas/Carta.jsx'
 import Jugador from './Jugador.jsx'
 import Marcador from './Marcador.jsx'
 import Mesa from './Mesa.jsx'
+import Reparto, { SECUENCIA, posicionDeNumero } from './Reparto.jsx'
 import Sala from './Sala.jsx'
+import { cartaDeId } from './narracion.js'
+
+const cartasDe = (...ids) => ids.map(cartaDeId)
 
 // Renderiza las pantallas contra estados de verdad salidos del motor. No
 // sustituye a mirar la pantalla, pero atrapa lo que sí se puede atrapar sin
@@ -156,6 +160,58 @@ describe('el tablero se dibuja', () => {
     const html = pintarMesa(room)
     assert.ok(/¡Ganaste!|Perdiste/.test(html))
     assert.ok(html.includes('Revancha'))
+  })
+})
+
+describe('el conteo de la mesa', () => {
+  it('la silueta 1 recibe la primera carta contando hacia arriba', () => {
+    assert.equal(posicionDeNumero(1, 'ascendente'), 0)
+    assert.equal(posicionDeNumero(4, 'ascendente'), 3)
+  })
+
+  it('contando hacia abajo, la primera carta cae en la silueta 4', () => {
+    assert.equal(posicionDeNumero(4, 'descendente'), 0)
+    assert.equal(posicionDeNumero(1, 'descendente'), 3)
+  })
+
+  it('el número de cada silueta es el que se canta en esa posición', () => {
+    // Es lo que el motor usa para decidir si el repartidor acierta.
+    for (const direction of ['ascendente', 'descendente']) {
+      const numeros = direction === 'ascendente' ? [1, 2, 3, 4] : [4, 3, 2, 1]
+      for (let pos = 0; pos < 4; pos += 1) {
+        const n = SECUENCIA[direction][pos]
+        assert.equal(posicionDeNumero(n, direction), pos)
+        assert.equal(n, numeros[pos], `posición ${pos} en ${direction}`)
+      }
+    }
+  })
+
+  it('al principio solo se puede empezar por el 1 o por el 4', () => {
+    const html = renderToStaticMarkup(
+      <Reparto mesa={[]} direction={null} revelados={0} puedoContar onContar={() => {}} />,
+    )
+    const activas = (html.match(/conteo-activa/g) ?? []).length
+    assert.equal(activas, 2, 'el 2 y el 3 no pueden abrir el conteo')
+    assert.equal((html.match(/disabled/g) ?? []).length, 2)
+  })
+
+  it('empezado el conteo, solo vale el siguiente de la fila', () => {
+    const mesa = cartasDe('oros-1', 'copas-5', 'espadas-7', 'bastos-11')
+    const html = renderToStaticMarkup(
+      <Reparto mesa={mesa} direction="ascendente" revelados={1} puedoContar onContar={() => {}} />,
+    )
+    assert.equal((html.match(/conteo-activa/g) ?? []).length, 1)
+    // La primera ya está puesta y las otras dos esperan su turno.
+    assert.equal((html.match(/conteo-puesta/g) ?? []).length, 1)
+    assert.equal((html.match(/conteo-quieta/g) ?? []).length, 2)
+  })
+
+  it('quien no reparte no puede tocar ninguna silueta', () => {
+    const html = renderToStaticMarkup(
+      <Reparto mesa={[]} direction={null} revelados={0} puedoContar={false} onContar={() => {}} />,
+    )
+    assert.equal((html.match(/conteo-activa/g) ?? []).length, 0)
+    assert.equal((html.match(/disabled/g) ?? []).length, 4)
   })
 })
 

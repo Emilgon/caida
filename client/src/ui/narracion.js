@@ -1,7 +1,7 @@
 import { sonido } from '../sonido.js'
 
-// Traduce los eventos del motor a frases y sonidos. Vive aparte del tablero
-// porque es lo que más va a cambiar cuando probemos jugando.
+// Traduce los eventos del motor a lo que se ve y se oye. Vive aparte del
+// tablero porque es lo que más va a cambiar según se vaya jugando.
 
 const NOMBRE_CANTO = {
   ronda: 'Ronda',
@@ -14,77 +14,77 @@ const NOMBRE_CANTO = {
   'casa-grande': 'Casa Grande',
 }
 
-const RAZON = {
-  'mesa-cantada': 'mesa cantada',
-  'mal-echada': 'mal echada',
-  caida: 'caída',
-  'mesa-limpia': 'mesa',
-  canto: 'canto',
-  cartas: 'cartas',
-}
-
 export function nombreCanto(tipo) {
   return NOMBRE_CANTO[tipo] ?? tipo
 }
 
+/** `oros-12` -> la carta, para poder dibujar una que ya salió de la mesa. */
+export function cartaDeId(id) {
+  const corte = id.lastIndexOf('-')
+  return { id, suit: id.slice(0, corte), value: Number(id.slice(corte + 1)) }
+}
+
 /**
- * Convierte un evento en un aviso para la pantalla, o `null` si no merece uno.
- * `quien(seat)` devuelve el nombre del jugador de ese asiento.
+ * Lo que se le pone encima al jugador que acaba de hacer algo. Corto y
+ * grande: tiene que leerse de reojo mientras miras la mesa.
+ * Devuelve `null` si el evento no merece burbuja.
  */
-export function describir(evento, quien) {
+export function burbujaDe(evento) {
   switch (evento.type) {
-    case 'reparto':
-      return {
-        tono: 'neutro',
-        texto: `${quien(evento.seat ?? evento.dealer)} reparte: primero ${evento.first}, contando ${evento.direction}`,
-      }
-    case 'mesa-cantada':
-      return { tono: 'bueno', texto: `¡Mesa cantada! ${quien(evento.seat)} acierta ${evento.points}` }
-    case 'mal-echada':
-      return { tono: 'neutro', texto: `Mal echada: 1 de consuelo para ${quien(evento.seat)}` }
     case 'caida':
       return {
-        tono: 'fuerte',
-        texto: evento.mesaLimpia
-          ? `¡CAÍDA CON MESA! ${quien(evento.seat)} se lleva todo (+${evento.points})`
-          : `¡Caída! ${quien(evento.seat)} (+${evento.points})`,
+        seat: evento.seat,
+        tono: 'caida',
+        texto: evento.mesaLimpia ? `¡CAÍDA CON MESA! +${evento.points}` : `¡CAÍDA! +${evento.points}`,
       }
     case 'recoger':
       return evento.mesaLimpia
-        ? { tono: 'bueno', texto: `¡Mesa limpia! ${quien(evento.seat)} (+${evento.points})` }
-        : null
+        ? { seat: evento.seat, tono: 'mesa', texto: `¡MESA LIMPIA! +${evento.points}` }
+        : { seat: evento.seat, tono: 'suave', texto: `recoge ${evento.taken.length + 1}` }
     case 'canto':
       return {
+        seat: evento.seat,
         tono: 'canto',
-        texto: `${quien(evento.seat)} canta ${nombreCanto(evento.canto)} (${evento.points})`,
+        texto: `¡${nombreCanto(evento.canto).toUpperCase()}! ${evento.points}`,
       }
     case 'mata-canto':
-      return {
-        tono: 'malo',
-        texto: `${quien(evento.seat)} le MATA el ${nombreCanto(evento.canto)} a ${quien(evento.victim)}`,
-      }
+      return { seat: evento.seat, tono: 'mata', texto: '¡TE LO MATO!' }
+    case 'mesa-cantada':
+      return { seat: evento.seat, tono: 'mesa', texto: `¡MESA CANTADA! +${evento.points}` }
+    case 'mal-echada':
+      return { seat: evento.seat, tono: 'suave', texto: 'mal echada, +1' }
+    default:
+      return null
+  }
+}
+
+/** Al que le mataron el canto también se entera, en su propia burbuja. */
+export function burbujaVictima(evento) {
+  if (evento.type !== 'mata-canto') return null
+  return { seat: evento.victim, tono: 'perdido', texto: `${nombreCanto(evento.canto)} anulado` }
+}
+
+/** Lo que no es de nadie en particular: una línea discreta bajo la mesa. */
+export function lineaDe(evento) {
+  switch (evento.type) {
     case 'reparto-parcial':
-      return { tono: 'neutro', texto: 'Tres cartas más para cada uno' }
+      return 'Tres cartas más para cada uno'
     case 'ultimas':
-      return { tono: 'neutro', texto: `${quien(evento.seat)} se lleva las últimas` }
+      return 'Las últimas cartas de la mesa se las lleva quien capturó de último'
     case 'canto-anulado':
-      return {
-        tono: 'malo',
-        texto: `${nombreCanto(evento.canto)} repetido: se pisan y no cobra nadie`,
-      }
-    case 'fin-partida':
-      return null // lo anuncia el cartel de fin, no un aviso pasajero
+      return `${nombreCanto(evento.canto)} repetido: se pisan y no cobra nadie`
+    case 'fin-mano':
+      return 'Fin de la mano'
     default:
       return null
   }
 }
 
 /** El sonido que le toca a cada evento. */
-export function sonar(evento, miAsiento, miEquipo) {
+export function sonar(evento, miEquipo) {
   switch (evento.type) {
     case 'reparto':
       sonido.barajar()
-      setTimeout(() => sonido.reparto(4), 450)
       return
     case 'reparto-parcial':
       sonido.reparto(3)
@@ -116,5 +116,3 @@ export function sonar(evento, miAsiento, miEquipo) {
     default:
   }
 }
-
-export const ETIQUETA_RAZON = RAZON

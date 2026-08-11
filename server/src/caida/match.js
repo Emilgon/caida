@@ -577,11 +577,9 @@ export function applyMove(match, seat, move) {
     if (!chosen) {
       throw new GameError("CARTA_INVALIDA", "Esa carta no esta en tu mano.");
     }
-    const declare = Boolean(move.cantar);
-    if (declare && !chosen.canDeclare) {
-      throw new GameError("CANTO_INVALIDO", "Esa carta no te sirve para cantar.");
-    }
-    return playCard(match, seat, chosen, declare);
+    // El canto es obligatorio: si juegas una carta que forma tu canto, lo
+    // cantas. No existe jugar callado, ni aqui ni en la mesa de verdad.
+    return playCard(match, seat, chosen, chosen.canDeclare);
   }
 
   throw new GameError("JUGADA_DESCONOCIDA", "Jugada no reconocida.");

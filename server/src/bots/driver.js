@@ -5,8 +5,9 @@ import { chooseMove } from "./policy.js";
 // no tiene nada que ver con los sockets: solo mira la sala, y si el turno es
 // de un bot, espera un momento y juega.
 
-// Sin la pausa el bot juega instantaneo y no te da tiempo de ver que paso.
-export const BOT_DELAY_MS = 900;
+// Sin la pausa el bot juega instantaneo y la mano se va sin que te enteres de
+// nada. Dos segundos y medio dan tiempo a leer que jugo, si canto y si te cayo.
+export const BOT_DELAY_MS = 2500;
 
 export function createBotDriver({ store, broadcast, delay = BOT_DELAY_MS, random = Math.random }) {
   // Un temporizador por sala como maximo: si no, dos avisos seguidos harian

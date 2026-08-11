@@ -315,7 +315,7 @@ describe("mesa limpia y caida con mesa", () => {
 });
 
 describe("cantos en la mesa", () => {
-  it("solo se puede cantar con una carta que forme el canto", () => {
+  it("solo las cartas que forman el canto lo disparan", () => {
     const match = scenario({
       turn: 1,
       hands: [[], cards("oros-5", "copas-5", "espadas-2")],
@@ -326,30 +326,41 @@ describe("cantos en la mesa", () => {
     assert.equal(moves.find((m) => m.card === "copas-5").canDeclare, true);
     assert.equal(moves.find((m) => m.card === "espadas-2").canDeclare, false, "la suelta no canta");
 
-    assert.throws(() => applyMove(match, 1, { type: "jugar", card: "espadas-2", cantar: true }), {
-      code: "CANTO_INVALIDO",
-    });
+    // Jugando la suelta no se canta nada.
+    const suelta = applyMove(match, 1, { type: "jugar", card: "espadas-2" });
+    assert.deepEqual(suelta.hand.declaredCantos, []);
   });
 
-  it("cantar es opcional y solo se puede una vez por tanda", () => {
+  it("el canto es obligatorio: no hay forma de jugar callado", () => {
     const match = scenario({
       players: 2,
       turn: 1,
       hands: [cards("bastos-12", "bastos-10", "bastos-7"), cards("oros-5", "copas-5", "espadas-2")],
       table: cards("bastos-1"),
     });
-    const sinCantar = applyMove(match, 1, { type: "jugar", card: "oros-5" });
-    assert.deepEqual(sinCantar.hand.declaredCantos, []);
 
-    const cantando = applyMove(match, 1, { type: "jugar", card: "oros-5", cantar: true });
-    assert.equal(cantando.hand.declaredCantos.length, 1);
-    assert.equal(cantando.hand.declaredCantos[0].type, "ronda");
-    assert.equal(cantando.hand.declared[1], true);
+    // Aunque el cliente pida no cantar, se canta igual.
+    const callado = applyMove(match, 1, { type: "jugar", card: "oros-5", cantar: false });
+    assert.equal(callado.hand.declaredCantos.length, 1);
+    assert.equal(callado.hand.declaredCantos[0].type, "ronda");
+    assert.equal(callado.hand.declared[1], true);
+  });
 
-    // El turno vuelve al 1 tras jugar el 0; la segunda carta del par ya no canta.
-    const afterOther = applyMove(cantando, 0, { type: "jugar", card: "bastos-12" });
-    const moves = legalMoves(afterOther, 1);
-    assert.ok(moves.every((m) => m.canDeclare === false));
+  it("un canto se declara una sola vez por tanda", () => {
+    const match = scenario({
+      players: 2,
+      turn: 1,
+      hands: [cards("bastos-12", "bastos-10", "bastos-7"), cards("oros-5", "copas-5", "espadas-2")],
+      table: cards("bastos-1"),
+    });
+    const cantado = applyMove(match, 1, { type: "jugar", card: "oros-5" });
+
+    // El turno vuelve al 1 tras jugar el 0; la segunda del par ya no canta.
+    const despues = applyMove(cantado, 0, { type: "jugar", card: "bastos-12" });
+    assert.ok(legalMoves(despues, 1).every((m) => m.canDeclare === false));
+
+    const otraVez = applyMove(despues, 1, { type: "jugar", card: "copas-5" });
+    assert.equal(otraVez.hand.declaredCantos.length, 1, "no se cobra dos veces");
   });
 
   it("el canto no da puntos al declararlo: se cobra al cerrar la mano", () => {

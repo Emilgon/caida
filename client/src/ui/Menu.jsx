@@ -240,6 +240,18 @@ export default function Menu({ acciones, ultima, onVolverAMesa }) {
         )}
 
         {error && <p className="aviso-error">{error}</p>}
+
+        {/* La licencia de la baraja (CC BY-SA 3.0) obliga a dar crédito. */}
+        <p className="menu-credito">
+          Cartas:{' '}
+          <a href="https://commons.wikimedia.org/wiki/File:Baraja_de_40_cartas.png" target="_blank" rel="noreferrer">
+            Naipes Libres
+          </a>{' '}
+          de Basquetteur y Germarquezm,{' '}
+          <a href="https://creativecommons.org/licenses/by-sa/3.0/deed.es" target="_blank" rel="noreferrer">
+            CC BY-SA 3.0
+          </a>
+        </p>
       </div>
     </div>
   )

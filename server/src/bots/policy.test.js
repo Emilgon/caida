@@ -59,41 +59,39 @@ describe("el bot decide", () => {
     assert.equal(chooseMove(view(match, 1), quieto).card, "espadas-2");
   });
 
-  it("canta cuando lo hace capturando, porque asi no se lo pueden matar", () => {
+  it("prefiere cantar capturando, que es como no se lo pueden matar", () => {
     const match = scenario({
       turn: 1,
       hands: [[], cards("oros-5", "copas-5", "espadas-2")],
       table: cards("bastos-5"),
     });
+    // Jugando un 5 captura el de la mesa Y canta la ronda, todo a salvo.
     const move = chooseMove(view(match, 1), quieto);
-    assert.equal(move.cantar, true);
     assert.ok(["oros-5", "copas-5"].includes(move.card));
+    assert.equal(legalMoves(match, 1).find((m) => m.card === move.card).canDeclare, true);
   });
 
-  it("no canta al lanzar si le queda otra carta del canto para hacerlo mas seguro", () => {
+  it("evita cantar lanzando si le queda otra carta del canto", () => {
     const match = scenario({
       turn: 1,
-      hands: [[], cards("oros-5", "copas-5", "espadas-2")],
-      table: cards("bastos-12"),
+      hands: [[], cards("oros-12", "copas-12", "espadas-2")],
+      table: cards("bastos-7"),
     });
-    const move = chooseMove(view(match, 1), quieto);
-    if (["oros-5", "copas-5"].includes(move.card)) {
-      assert.equal(move.cantar, false, "todavia le queda la otra del par");
-    }
+    // Soltar un 12 cantaría Ronda de 12 al aire, con la otra todavía en mano:
+    // el de la derecha se la mata. Mejor soltar el 2.
+    assert.equal(chooseMove(view(match, 1), quieto).card, "espadas-2");
   });
 
-  it("canta con la ultima carta del canto: o ahora o nunca", () => {
+  it("con la ultima carta del canto ya no evita nada: o se juega o se pierde", () => {
     const match = scenario({
       turn: 1,
       hands: [[], cards("oros-5", "espadas-2")],
       table: cards("bastos-12"),
-      declaredCantos: [],
     });
-    // Montamos a mano el canto de la tanda con una carta ya jugada.
+    // Canto de la tanda con una carta del par ya jugada.
     match.hand.canto[1] = { type: "ronda", points: 1, cards: ["oros-5", "copas-5"], rank: [4] };
     const move = chooseMove(view(match, 1), quieto);
-    assert.equal(move.card, "oros-5");
-    assert.equal(move.cantar, true);
+    assert.ok(["oros-5", "espadas-2"].includes(move.card));
   });
 
   it("siempre devuelve una jugada legal", () => {

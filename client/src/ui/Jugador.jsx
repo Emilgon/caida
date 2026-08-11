@@ -1,11 +1,20 @@
 import { Dorso } from '../cartas/Carta.jsx'
+import { nombreCanto } from './narracion.js'
 
 /**
- * El banner de un jugador: quién es, cuántas cartas le quedan en la mano,
- * cuántas lleva capturadas y si le toca. También muestra su canto declarado,
- * que es información pública: se canta en voz alta.
+ * El banner de un jugador: quién es, cuántas cartas le quedan, cuántas lleva
+ * capturadas y si le toca. La burbuja de lo que acaba de hacer sale pegada a
+ * él, no en el medio de la mesa: así se sabe de un vistazo quién hizo qué.
  */
-export default function Jugador({ puesto, game, posicion, esTurno, esRepartidor, cantos }) {
+export default function Jugador({
+  puesto,
+  game,
+  posicion,
+  esTurno,
+  esRepartidor,
+  cantos,
+  aviso,
+}) {
   if (!puesto || puesto.empty) return null
   const { seat, name, bot, connected, you } = puesto
   const enMano = game?.hand?.cardsLeft?.[seat] ?? 0
@@ -24,6 +33,12 @@ export default function Jugador({ puesto, game, posicion, esTurno, esRepartidor,
         .filter(Boolean)
         .join(' ')}
     >
+      {aviso && (
+        <div key={aviso.id} className={`burbuja burbuja-${aviso.tono}`} role="status">
+          {aviso.texto}
+        </div>
+      )}
+
       <div className="jugador-ficha">
         <span className="jugador-inicial" aria-hidden="true">
           {name.slice(0, 1).toUpperCase()}
@@ -49,7 +64,7 @@ export default function Jugador({ puesto, game, posicion, esTurno, esRepartidor,
           <span className="jugador-cantos">
             {mios.map((canto) => (
               <span key={canto.id} className={`canto-chip ${canto.killed ? 'canto-muerto' : ''}`}>
-                {canto.type} {canto.points}
+                {nombreCanto(canto.type)} {canto.points}
               </span>
             ))}
           </span>

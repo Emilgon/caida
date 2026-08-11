@@ -2,16 +2,20 @@ import { DIBUJOS, PALOS } from './palos.jsx'
 import { FIGURAS } from './figuras.jsx'
 import './carta.css'
 
-// Proporción de la baraja española real (62 x 95 mm).
+// Las cartas son la baraja "Naipes Libres" (Basquetteur y Germarquezm,
+// CC BY-SA 3.0, Wikimedia Commons), en client/public/cartas/. Ver CREDITOS.md.
+//
+// Si una imagen falta, la carta se dibuja en SVG en vez de salir rota. El
+// dibujo no es tan bonito, pero una carta ilegible arruina la partida y una
+// carta rota no se puede ni leer.
+
 const ANCHO = 100
 const ALTO = 155
 const MARGEN = 7
 
-/**
- * Los cortes del marco son LA pinta: así se reconoce el palo con las cartas
- * en abanico, sin ver el centro. Oros no corta, copas corta una vez por lado,
- * espadas dos, bastos tres.
- */
+const rutaDe = (carta) => `/cartas/${carta.suit}-${carta.value}.png`
+
+/** Los cortes del marco: así se reconoce el palo sin ver el centro. */
 function segmentos(desde, hasta, cortes, hueco) {
   if (cortes === 0) return [[desde, hasta]]
   const largo = hasta - desde
@@ -47,7 +51,6 @@ function Marco({ palo }) {
           <line x1={x1} y1={a} x2={x1} y2={b} {...trazo} />
         </g>
       ))}
-      {/* Los esquineros siempre cierran, como en el mazo real. */}
       {[
         [x0, y0, 1, 1],
         [x1, y0, -1, 1],
@@ -67,7 +70,6 @@ function Marco({ palo }) {
   )
 }
 
-// Cómo se reparten las pintas en el centro para cada número.
 const DISPOSICION = {
   2: [[50, 48], [50, 107]],
   3: [[50, 44], [50, 77], [50, 111]],
@@ -91,7 +93,6 @@ function Centro({ palo, valor }) {
   }
 
   if (valor === 1) {
-    // El as lleva la pinta grande, como en la baraja de verdad.
     return (
       <g transform="translate(21 46) scale(0.58)">
         <Dibujo color={color} sombra={sombra} />
@@ -115,17 +116,9 @@ function Centro({ palo, valor }) {
 function Esquina({ palo, valor, invertida }) {
   const { color } = PALOS[palo]
   const Dibujo = DIBUJOS[palo]
-  const transform = invertida ? `rotate(180 ${ANCHO / 2} ${ALTO / 2})` : undefined
   return (
-    <g transform={transform}>
-      <text
-        x="15"
-        y="27"
-        className="carta-indice"
-        fill={color}
-        textAnchor="middle"
-        dominantBaseline="middle"
-      >
+    <g transform={invertida ? `rotate(180 ${ANCHO / 2} ${ALTO / 2})` : undefined}>
+      <text x="15" y="27" className="carta-indice" fill={color} textAnchor="middle" dominantBaseline="middle">
         {valor}
       </text>
       <g transform="translate(9 31) scale(0.12)">
@@ -135,52 +128,33 @@ function Esquina({ palo, valor, invertida }) {
   )
 }
 
+/** El dibujo de respaldo, por si falta la imagen. */
+function CartaDibujada({ carta }) {
+  const { suit: palo, value: valor } = carta
+  return (
+    <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="carta-svg">
+      <rect x="0" y="0" width={ANCHO} height={ALTO} rx="8" fill="#f7efdc" />
+      <Marco palo={palo} />
+      <Centro palo={palo} valor={valor} />
+      <Esquina palo={palo} valor={valor} />
+      <Esquina palo={palo} valor={valor} invertida />
+    </svg>
+  )
+}
+
 /** El reverso: es lo que se ve en las manos ajenas y en el mazo. */
 export function Dorso({ className = '', style }) {
   return (
     <div className={`carta carta-dorso ${className}`} style={style}>
-      <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="carta-svg" aria-hidden="true">
-        <rect x="0" y="0" width={ANCHO} height={ALTO} rx="8" fill="#7b1f1c" />
-        <rect x="5" y="5" width={ANCHO - 10} height={ALTO - 10} rx="5" fill="#96302a" />
-        <rect
-          x="5"
-          y="5"
-          width={ANCHO - 10}
-          height={ALTO - 10}
-          rx="5"
-          fill="none"
-          stroke="#e8c98a"
-          strokeWidth="1.6"
-          opacity="0.7"
-        />
-        <g stroke="#e8c98a" strokeWidth="0.9" opacity="0.35">
-          {Array.from({ length: 22 }, (_, i) => (
-            <line key={`a${i}`} x1={-60 + i * 12} y1="0" x2={20 + i * 12} y2={ALTO} />
-          ))}
-          {Array.from({ length: 22 }, (_, i) => (
-            <line key={`b${i}`} x1={20 + i * 12} y1="0" x2={-60 + i * 12} y2={ALTO} />
-          ))}
-        </g>
-        <circle cx={ANCHO / 2} cy={ALTO / 2} r="26" fill="#7b1f1c" stroke="#e8c98a" strokeWidth="1.6" />
-        <text
-          x={ANCHO / 2}
-          y={ALTO / 2 + 1}
-          className="carta-dorso-marca"
-          fill="#e8c98a"
-          textAnchor="middle"
-          dominantBaseline="middle"
-        >
-          C
-        </text>
-      </svg>
+      <img src="/cartas/reverso.png" alt="" className="carta-img" draggable="false" />
     </div>
   )
 }
 
 /**
  * Una carta boca arriba.
- * `estado` marca cómo se ve: 'jugable' (puedes soltarla), 'capturable' (la
- * capturarías con la carta que estás mirando), 'apagada' (no toca).
+ * `estado`: 'jugable' (puedes soltarla), 'capturable' (se la llevaría la carta
+ * que estás mirando), 'apagada' (no toca), 'cayendo' (te la acaban de caer).
  */
 export default function Carta({
   carta,
@@ -217,13 +191,19 @@ export default function Carta({
       title={title}
       aria-label={`${valor} de ${PALOS[palo].nombre}`}
     >
-      <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="carta-svg">
-        <rect x="0" y="0" width={ANCHO} height={ALTO} rx="8" fill="#f7efdc" />
-        <Marco palo={palo} />
-        <Centro palo={palo} valor={valor} />
-        <Esquina palo={palo} valor={valor} />
-        <Esquina palo={palo} valor={valor} invertida />
-      </svg>
+      <img
+        src={rutaDe(carta)}
+        alt=""
+        className="carta-img"
+        draggable="false"
+        onError={(e) => {
+          // Falta la imagen: se cambia al dibujo y no se vuelve a intentar.
+          e.currentTarget.closest('.carta')?.classList.add('carta-sin-imagen')
+        }}
+      />
+      <span className="carta-respaldo" aria-hidden="true">
+        <CartaDibujada carta={carta} />
+      </span>
     </Etiqueta>
   )
 }

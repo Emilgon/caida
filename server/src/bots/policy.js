@@ -29,19 +29,20 @@ function exposure(move, view) {
 }
 
 /**
- * Declarar el canto casi siempre conviene: si no lo declaras y te caen igual,
- * pierdes lo mismo. Lo que se puede elegir es CUANDO, y eso si importa:
- *  - cantando con una captura, la carta se va a tu monton y nadie la mata;
- *  - si es la ultima carta del canto que te queda, o cantas ahora o lo pierdes;
- *  - si no, conviene esperar un momento mas seguro.
+ * El canto es obligatorio: si juegas una carta del canto, lo cantas. Lo que el
+ * bot SI puede elegir es con cual de esas cartas jugar, y eso importa:
+ * cantando con una captura la carta se va a su monton y nadie se lo mata;
+ * cantando al lanzar, el de su derecha puede caerle encima y anularselo.
  */
-function shouldDeclare(move, view) {
-  if (!move.canDeclare) return false;
-  if (move.captures.length > 0) return true;
+function riesgoDeCanto(move, view) {
+  if (!move.canDeclare) return 0;
+  if (move.captures.length > 0) return -6; // cantar a salvo, premio
 
   const canto = view.hand.myCanto;
-  const stillHolding = view.hand.myCards.filter((card) => canto.cards.includes(card.id));
-  return stillHolding.length <= 1;
+  const enMano = view.hand.myCards.filter((card) => canto.cards.includes(card.id)).length;
+  // Con otra carta del canto todavia en mano, mejor esperar un momento mejor.
+  // Con la ultima, no hay nada que elegir: o se juega o se pierde el canto.
+  return enMano > 1 ? canto.points * 0.8 : 0;
 }
 
 function scorePlay(move, view) {
@@ -49,6 +50,7 @@ function scorePlay(move, view) {
   score += move.captures.length * WEIGHTS.cards;
   if (move.killsCanto) score += WEIGHTS.killsCanto;
   score -= exposure(move, view) * WEIGHTS.exposure;
+  score -= riesgoDeCanto(move, view);
 
   // Entre dos jugadas parecidas, soltar la carta chica y guardar la grande:
   // las figuras valen mas cuando caes con ellas mas adelante.
@@ -81,5 +83,6 @@ export function chooseMove(view, random = Math.random) {
     }
   }
 
-  return { type: "jugar", card: best.card, cantar: shouldDeclare(best, view) };
+  // `cantar` ya no se decide aqui: el motor canta solo cuando toca.
+  return { type: "jugar", card: best.card };
 }

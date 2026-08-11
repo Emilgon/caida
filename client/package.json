@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "cartas": "node scripts/bajar-baraja.mjs public/cartas"
   },
   "dependencies": {
     "react": "^19.2.8",

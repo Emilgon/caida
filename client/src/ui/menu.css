@@ -83,6 +83,18 @@
   --texto: #0d2419;
 }
 
+.menu-credito {
+  margin: 0.2rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  text-align: center;
+  color: rgb(246 239 221 / 0.38);
+}
+
+.menu-credito a {
+  color: rgb(246 239 221 / 0.55);
+}
+
 .menu-codigo {
   text-align: center;
   font-family: var(--fuente-titulo);

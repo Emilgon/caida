@@ -3,157 +3,137 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Carta, { Dorso } from '../cartas/Carta.jsx'
 import Jugador from './Jugador.jsx'
 import Marcador from './Marcador.jsx'
+import Reparto, { SECUENCIA } from './Reparto.jsx'
 import { alternarSilencio, estaEnSilencio, sonido } from '../sonido.js'
-import { describir, nombreCanto, sonar } from './narracion.js'
+import { burbujaDe, burbujaVictima, cartaDeId, lineaDe, nombreCanto, sonar } from './narracion.js'
 import './mesa.css'
 
-// Dónde se sienta cada quien en pantalla, según cuántos sean y a qué
-// distancia estén de ti. El turno corre hacia la derecha, así que el que
-// juega después de ti va a tu derecha.
+// Dónde se sienta cada quien en pantalla. El turno corre hacia la derecha, así
+// que el que juega después de ti va a tu derecha.
 const POSICIONES = {
   2: ['yo', 'arriba'],
   3: ['yo', 'derecha', 'izquierda'],
   4: ['yo', 'derecha', 'arriba', 'izquierda'],
 }
 
-function ModalReparto({ game, onRepartir }) {
-  const [primero, setPrimero] = useState('manos')
-  const [sentido, setSentido] = useState('ascendente')
-
-  return (
-    <div className="panel panel-reparto">
-      <h3>Te toca repartir</h3>
-      <label className="campo">
-        ¿Qué repartes primero?
-        <div className="opciones">
-          {[
-            ['manos', 'Las manos'],
-            ['mesa', 'La mesa'],
-          ].map(([valor, texto]) => (
-            <button
-              key={valor}
-              type="button"
-              className="opcion"
-              aria-pressed={primero === valor}
-              onClick={() => setPrimero(valor)}
-            >
-              {texto}
-            </button>
-          ))}
-        </div>
-      </label>
-      <label className="campo">
-        ¿Cómo cuentas la mesa?
-        <div className="opciones">
-          {[
-            ['ascendente', '1 · 2 · 3 · 4'],
-            ['descendente', '4 · 3 · 2 · 1'],
-          ].map(([valor, texto]) => (
-            <button
-              key={valor}
-              type="button"
-              className="opcion"
-              aria-pressed={sentido === valor}
-              onClick={() => setSentido(valor)}
-            >
-              {texto}
-            </button>
-          ))}
-        </div>
-      </label>
-      <p className="panel-pista">
-        Si una carta de la mesa coincide con el número que cantas, esos puntos son tuyos.
-      </p>
-      <button
-        type="button"
-        className="boton"
-        onClick={() =>
-          onRepartir(
-            game.legalMoves.find(
-              (move) => move.first === primero && move.direction === sentido,
-            ),
-          )
-        }
-      >
-        Barajar y repartir
-      </button>
-    </div>
-  )
+// Hacia dónde vuelan las cartas capturadas, según dónde esté quien capturó.
+const RUMBO = {
+  yo: ['0px', '160px'],
+  arriba: ['0px', '-160px'],
+  izquierda: ['-220px', '-30px'],
+  derecha: ['220px', '-30px'],
 }
 
-function ResumenMano({ resumen, room, game }) {
-  return (
-    <div className="panel panel-resumen">
-      <h3>Mano {resumen.number}</h3>
-      <ul className="resumen-lista">
-        {resumen.cards.map((linea) => (
-          <li key={linea.team}>
-            <span>{game.teams[linea.team].map((s) => room.seats[s]?.name).join(' y ')}</span>
-            <span className="resumen-detalle">
-              {linea.cards} cartas contra {linea.threshold}
-              {linea.points > 0 && <strong> +{linea.points}</strong>}
-            </span>
-          </li>
-        ))}
-      </ul>
-      {resumen.cantos.length > 0 && (
-        <div className="resumen-cantos">
-          {resumen.cantos.map((canto) => (
-            <span key={canto.id} className={`canto-chip ${canto.killed ? 'canto-muerto' : ''}`}>
-              {room.seats[canto.seat]?.name}: {nombreCanto(canto.type)} {canto.points}
-              {canto.killed && ' (matado)'}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+// Cuánto se queda en pantalla lo que acaba de pasar. Va con el ritmo de los
+// bots (2,5 s) para que dé tiempo a leerlo y no se amontone.
+const DURACION_BURBUJA = 2600
+const DURACION_LINEA = 3200
 
 export default function Mesa({ room, game, acciones, onSalir }) {
   const [resaltadas, setResaltadas] = useState([])
-  const [pendiente, setPendiente] = useState(null) // carta elegida que puede cantar
-  const [avisos, setAvisos] = useState([])
+  const [burbujas, setBurbujas] = useState({}) // asiento -> aviso
+  const [linea, setLinea] = useState(null)
+  const [fantasmas, setFantasmas] = useState([]) // cartas volando al montón
+  const [golpe, setGolpe] = useState(null) // 'caida' | 'mesa'
   const [error, setError] = useState(null)
   const [silencio, setSilencio] = useState(estaEnSilencio)
+
+  // Estado del reparto a mano: primero se decide el orden, luego se cuenta.
+  const [reparto, setReparto] = useState({ first: null, direction: null, revelados: 0 })
+
   const vistos = useRef(null)
   const eraMiTurno = useRef(false)
+  const mesaPrevia = useRef([])
+  const relojes = useRef([])
 
   const nombre = useCallback((seat) => room.seats[seat]?.name ?? `Asiento ${seat + 1}`, [room])
-  const miTurno = game?.legalMoves?.length > 0 && game.phase === 'juego'
   const mano = game?.hand
   const cantos = mano?.cantos ?? []
+  const miTurno = game?.legalMoves?.length > 0 && game.phase === 'juego'
+  const soyRepartidor = game?.phase === 'reparto' && game.legalMoves.length > 0
 
-  // --- Narración: convierte los eventos nuevos en avisos y sonidos ---------
+  const posicionDe = useCallback(
+    (seat) => {
+      const total = room.config.players
+      const yo = game?.seat ?? room.yourSeat ?? 0
+      return POSICIONES[total][(seat - yo + total) % total]
+    },
+    [room, game],
+  )
+
+  // Los temporizadores se limpian al desmontar: si no, un aviso se queda
+  // pegado cuando cambias de pantalla a mitad de una animación.
+  useEffect(() => () => relojes.current.forEach(clearTimeout), [])
+  const enUnRato = useCallback((fn, ms) => {
+    const id = setTimeout(fn, ms)
+    relojes.current.push(id)
+    return id
+  }, [])
+
+  // --- Narración: eventos nuevos -> burbujas, sonido y animaciones ---------
   useEffect(() => {
     if (!game) return
     if (vistos.current === null) {
-      // Primera carga (o reconexión): no narramos lo que ya pasó.
-      vistos.current = game.eventCount
+      vistos.current = game.eventCount // primera carga: no narramos el pasado
       return
     }
     const nuevos = game.eventCount - vistos.current
-    if (nuevos <= 0) {
-      vistos.current = game.eventCount
-      return
-    }
     vistos.current = game.eventCount
+    if (nuevos <= 0) return
 
     const recientes = game.events.slice(Math.max(0, game.events.length - nuevos))
-    const frescos = []
+    const frescas = {}
+    let ultimaLinea = null
+
     for (const evento of recientes) {
-      sonar(evento, game.seat, game.team)
-      const aviso = describir(evento, nombre)
-      if (aviso) frescos.push({ ...aviso, id: `${game.eventCount}-${frescos.length}` })
+      sonar(evento, game.team)
+
+      for (const burbuja of [burbujaDe(evento), burbujaVictima(evento)]) {
+        if (burbuja) frescas[burbuja.seat] = { ...burbuja, id: `${game.eventCount}-${burbuja.seat}` }
+      }
+      const texto = lineaDe(evento)
+      if (texto) ultimaLinea = texto
+
+      // Las cartas capturadas siguen un momento en pantalla, volando hacia el
+      // montón de quien capturó. Salen de la mesa de ANTES de la jugada.
+      if (evento.type === 'caida' || evento.type === 'recoger') {
+        const previas = mesaPrevia.current
+        const vuelan = [...evento.taken.map((id) => previas.find((c) => c.id === id) ?? cartaDeId(id)), cartaDeId(evento.card)]
+        const [x, y] = RUMBO[posicionDe(evento.seat)] ?? RUMBO.arriba
+        setFantasmas(vuelan.map((carta, i) => ({ ...carta, clave: `${game.eventCount}-${i}`, x, y })))
+        enUnRato(() => setFantasmas([]), 750)
+        setGolpe(evento.type === 'caida' ? 'caida' : evento.mesaLimpia ? 'mesa' : null)
+        enUnRato(() => setGolpe(null), 800)
+      }
+
+      // Reparto nuevo: si no soy yo quien cuenta, las cartas van saliendo solas.
+      if (evento.type === 'reparto') {
+        setReparto((previo) => ({ ...previo, direction: evento.direction, revelados: previo.revelados }))
+      }
     }
-    if (frescos.length > 0) {
-      setAvisos((previos) => [...previos, ...frescos].slice(-4))
-      const quitar = setTimeout(() => {
-        setAvisos((previos) => previos.filter((a) => !frescos.some((f) => f.id === a.id)))
-      }, 3400)
-      return () => clearTimeout(quitar)
+
+    if (Object.keys(frescas).length > 0) {
+      setBurbujas((previas) => ({ ...previas, ...frescas }))
+      enUnRato(() => {
+        setBurbujas((previas) => {
+          const copia = { ...previas }
+          for (const [seat, aviso] of Object.entries(frescas)) {
+            if (copia[seat]?.id === aviso.id) delete copia[seat]
+          }
+          return copia
+        })
+      }, DURACION_BURBUJA)
     }
-  }, [game, nombre])
+    if (ultimaLinea) {
+      setLinea(ultimaLinea)
+      enUnRato(() => setLinea((actual) => (actual === ultimaLinea ? null : actual)), DURACION_LINEA)
+    }
+  }, [game, enUnRato, posicionDe])
+
+  // Guardamos la mesa de cada momento para poder animar lo que se llevaron.
+  useEffect(() => {
+    mesaPrevia.current = mano?.table ?? []
+  }, [mano?.table])
 
   // --- Alarma de turno -----------------------------------------------------
   useEffect(() => {
@@ -161,49 +141,73 @@ export default function Mesa({ room, game, acciones, onSalir }) {
     eraMiTurno.current = miTurno
   }, [miTurno])
 
-  // Al cambiar el turno se limpia lo que estuvieras a punto de jugar.
   useEffect(() => {
-    setPendiente(null)
     setResaltadas([])
   }, [mano?.turn, game?.phase])
+
+  // --- Reparto: al empezar una mano nueva se reinicia el conteo ------------
+  useEffect(() => {
+    if (game?.phase === 'reparto') setReparto({ first: null, direction: null, revelados: 0 })
+  }, [game?.phase, game?.handNumber])
+
+  // Quien no reparte ve salir las cartas solas, una tras otra.
+  useEffect(() => {
+    if (!mano || reparto.first !== null) return // el que cuenta va a su ritmo
+    if (mano.lastPlayed !== null || mano.lastCapturer !== null) return
+    if (reparto.revelados >= 4) return
+    const id = enUnRato(() => setReparto((p) => ({ ...p, revelados: Math.min(4, p.revelados + 1) })), 700)
+    return () => clearTimeout(id)
+  }, [mano, reparto.first, reparto.revelados, enUnRato])
+
+  // El conteo solo vive en el hueco entre repartir y la primera jugada: en
+  // cuanto alguien juega, las posiciones de la mesa ya no son las del reparto
+  // y el filtro de revelado escondería cartas en juego.
+  const reciénRepartida =
+    Boolean(mano) && mano.lastPlayed === null && mano.lastCapturer === null && mano.table.length === 4
+  const contando = reciénRepartida && reparto.revelados < 4
+
+  // Quien reparte es el único que pone `first`, y sigue contando aunque la
+  // partida ya haya pasado a fase de juego.
+  const yoCuento = reparto.first !== null
 
   const jugadaDe = useCallback(
     (cartaId) => game?.legalMoves?.find((move) => move.card === cartaId),
     [game],
   )
 
-  async function jugar(move, cantar) {
-    setPendiente(null)
-    setResaltadas([])
-    const r = await acciones.jugar({ type: move.type, card: move.card, cantar })
-    if (!r.ok) {
-      sonido.error()
-      setError(r.error.message)
-      setTimeout(() => setError(null), 3000)
-    }
-  }
-
-  // Repartir viaja por el mismo evento que jugar una carta: para el servidor
-  // es una jugada más, y así se valida contra legalMoves igual que el resto.
-  async function repartir(move) {
-    if (!move) return
+  async function pedir(move) {
     const r = await acciones.jugar(move)
     if (!r.ok) {
       sonido.error()
       setError(r.error.message)
+      enUnRato(() => setError(null), 3200)
     }
+    return r
   }
 
-  const asientos = useMemo(() => {
-    const total = room.config.players
-    const yo = game?.seat ?? room.yourSeat ?? 0
-    return room.seats.map((puesto) => ({
-      puesto,
-      posicion: POSICIONES[total][(puesto.seat - yo + total) % total],
-    }))
-  }, [room, game])
+  async function jugarCarta(move) {
+    setResaltadas([])
+    await pedir({ type: 'jugar', card: move.card })
+  }
 
-  const turnoDe = game?.phase === 'reparto' ? game.dealer : mano?.turn
+  /** El repartidor pone la carta número `n` sobre la mesa. */
+  async function contar(n) {
+    if (reparto.direction === null) {
+      const direction = n === 1 ? 'ascendente' : 'descendente'
+      setReparto((p) => ({ ...p, direction, revelados: 1 }))
+      sonido.carta()
+      const r = await pedir({ type: 'repartir', first: reparto.first, direction })
+      if (!r.ok) setReparto((p) => ({ ...p, direction: null, revelados: 0 }))
+      return
+    }
+    sonido.carta()
+    setReparto((p) => ({ ...p, revelados: Math.min(4, p.revelados + 1) }))
+  }
+
+  const asientos = useMemo(
+    () => room.seats.map((puesto) => ({ puesto, posicion: posicionDe(puesto.seat) })),
+    [room, posicionDe],
+  )
 
   if (!game) {
     return (
@@ -216,6 +220,10 @@ export default function Mesa({ room, game, acciones, onSalir }) {
 
   const terminada = game.winner !== null
   const gane = terminada && game.winner === game.team
+  const turnoDe = game.phase === 'reparto' ? game.dealer : mano?.turn
+  const visiblesEnMesa = contando
+    ? mano.table.filter((_, pos) => pos < reparto.revelados)
+    : (mano?.table ?? [])
 
   return (
     <div className={`mesa mesa-${room.config.players}`}>
@@ -237,7 +245,7 @@ export default function Mesa({ room, game, acciones, onSalir }) {
         </div>
       </div>
 
-      <div className="mesa-pano">
+      <div className={`mesa-pano ${golpe ? `mesa-golpe-${golpe}` : ''}`}>
         {asientos
           .filter(({ posicion }) => posicion !== 'yo')
           .map(({ puesto, posicion }) => (
@@ -249,45 +257,65 @@ export default function Mesa({ room, game, acciones, onSalir }) {
               esTurno={turnoDe === puesto.seat && !room.paused}
               esRepartidor={game.dealer === puesto.seat}
               cantos={cantos}
+              aviso={burbujas[puesto.seat]}
             />
           ))}
 
         <div className="mesa-centro">
-          {mano && (
-            <>
-              <div className="mesa-mazo" title={`${mano.deckLeft} cartas por repartir`}>
-                {mano.deckLeft > 0 && (
-                  <>
-                    <Dorso className="mesa-mazo-carta" style={{ '--i': 0 }} />
-                    <Dorso className="mesa-mazo-carta" style={{ '--i': 1 }} />
-                    <Dorso className="mesa-mazo-carta" style={{ '--i': 2 }} />
-                  </>
-                )}
-                <span className="mesa-mazo-cuenta">{mano.deckLeft}</span>
-              </div>
+          <div className="mesa-mazo" title={`${mano?.deckLeft ?? 40} cartas por repartir`}>
+            {(mano?.deckLeft ?? 40) > 0 && (
+              <>
+                <Dorso className="mesa-mazo-carta" style={{ '--i': 0 }} />
+                <Dorso className="mesa-mazo-carta" style={{ '--i': 1 }} />
+                <Dorso className="mesa-mazo-carta" style={{ '--i': 2 }} />
+              </>
+            )}
+            <span className="mesa-mazo-cuenta">{mano?.deckLeft ?? 40}</span>
+          </div>
 
+          <div className="mesa-tapete">
+            {/* Contando la mesa: siluetas numeradas en vez de las cartas. */}
+            {yoCuento && (game.phase === 'reparto' || contando) ? (
+              <Reparto
+                mesa={mano?.table ?? []}
+                direction={reparto.direction}
+                revelados={reparto.revelados}
+                puedoContar
+                onContar={contar}
+              />
+            ) : (
               <div className="mesa-cartas">
-                {mano.table.length === 0 && <span className="mesa-vacia">Mesa limpia</span>}
-                {mano.table.map((carta) => (
+                {visiblesEnMesa.length === 0 && game.phase === 'juego' && (
+                  <span className="mesa-vacia">Mesa limpia</span>
+                )}
+                {visiblesEnMesa.map((carta) => (
                   <Carta
                     key={carta.id}
                     carta={carta}
                     estado={resaltadas.includes(carta.id) ? 'capturable' : ''}
-                    className={mano.lastPlayed?.id === carta.id ? 'carta-recien-jugada' : ''}
+                    className={mano?.lastPlayed?.id === carta.id ? 'carta-recien-jugada' : ''}
                   />
                 ))}
               </div>
-            </>
-          )}
+            )}
+
+            {/* Las que se acaban de llevar, volando hacia su montón. */}
+            {fantasmas.length > 0 && (
+              <div className="mesa-fantasmas" aria-hidden="true">
+                {fantasmas.map((carta) => (
+                  <Carta
+                    key={carta.clave}
+                    carta={carta}
+                    className="carta-capturada"
+                    style={{ '--hacia-x': carta.x, '--hacia-y': carta.y }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="mesa-avisos">
-          {avisos.map((aviso) => (
-            <div key={aviso.id} className={`aviso aviso-${aviso.tono}`}>
-              {aviso.texto}
-            </div>
-          ))}
-        </div>
+        {linea && <div className="mesa-linea">{linea}</div>}
 
         {room.paused && (
           <div className="mesa-pausa">
@@ -313,32 +341,49 @@ export default function Mesa({ room, game, acciones, onSalir }) {
               esTurno={miTurno}
               esRepartidor={game.dealer === puesto.seat}
               cantos={cantos}
+              aviso={burbujas[puesto.seat]}
             />
           ))}
+
+        {mano?.myCanto && (
+          <p className={`mi-canto ${mano.myCantoDeclared ? 'mi-canto-hecho' : ''}`}>
+            {mano.myCantoDeclared ? (
+              <>Cantaste <strong>{nombreCanto(mano.myCanto.type)}</strong> ({mano.myCanto.points} pts)</>
+            ) : (
+              <>
+                Tienes <strong>{nombreCanto(mano.myCanto.type)}</strong> ({mano.myCanto.points} pts).
+                {mano.myCantoPlayable
+                  ? ' Se canta solo al jugar una de las cartas marcadas.'
+                  : ' Ya no te quedan cartas para cantarlo.'}
+              </>
+            )}
+          </p>
+        )}
 
         <div className={`mi-mano ${miTurno ? 'mi-mano-activa' : ''}`}>
           {(mano?.myCards ?? []).map((carta) => {
             const move = jugadaDe(carta.id)
             const jugable = Boolean(move) && !room.paused
+            const esDelCanto =
+              mano.myCanto && !mano.myCantoDeclared && mano.myCanto.cards.includes(carta.id)
             return (
               <Carta
                 key={carta.id}
                 carta={carta}
                 estado={jugable ? 'jugable' : 'apagada'}
-                seleccionada={pendiente?.card === carta.id}
-                onClick={
-                  jugable
-                    ? () => (move.canDeclare ? setPendiente(move) : jugar(move, false))
-                    : undefined
-                }
+                className={esDelCanto ? 'carta-del-canto' : ''}
+                onClick={jugable ? () => jugarCarta(move) : undefined}
                 onPointerEnter={() => move && setResaltadas(move.captures)}
                 onPointerLeave={() => setResaltadas([])}
                 title={
                   move
                     ? [
-                        move.caida ? `Caída (+${move.points})` : null,
+                        move.caida ? `¡Caída! +${move.points}` : null,
                         move.mesaLimpia ? 'Deja la mesa limpia' : null,
-                        move.captures.length ? `Se lleva ${move.captures.length + 1} cartas` : 'La lanzas a la mesa',
+                        move.captures.length
+                          ? `Se lleva ${move.captures.length + 1} cartas`
+                          : 'La lanzas a la mesa',
+                        move.canDeclare ? `Cantas ${nombreCanto(move.canto.type)}` : null,
                         move.killsCanto ? 'Le mata el canto' : null,
                       ]
                         .filter(Boolean)
@@ -349,56 +394,62 @@ export default function Mesa({ room, game, acciones, onSalir }) {
             )
           })}
         </div>
-
-        {mano?.myCanto && mano.myCantoPlayable && (
-          <p className="mi-canto">
-            Tienes <strong>{nombreCanto(mano.myCanto.type)}</strong> ({mano.myCanto.points} pts).
-            Se canta al jugar una de esas cartas.
-          </p>
-        )}
       </div>
 
       {/* --- Capas por encima de la mesa ------------------------------------ */}
 
-      {pendiente && (
-        <div className="capa" onClick={() => setPendiente(null)}>
-          <div className="panel panel-canto" onClick={(e) => e.stopPropagation()}>
-            <h3>¿Cantas {nombreCanto(pendiente.canto.type)}?</h3>
-            <p className="panel-pista">
-              Son {pendiente.canto.points} puntos.
-              {pendiente.captures.length === 0
-                ? ' Ojo: el de tu derecha puede matártelo si le cae a esa carta.'
-                : ' Cantas capturando, así que nadie te lo puede matar.'}
-            </p>
-            <div className="panel-botones">
-              <button type="button" className="boton" onClick={() => jugar(pendiente, true)}>
-                ¡Cantar {nombreCanto(pendiente.canto.type)}!
-              </button>
-              <button
-                type="button"
-                className="boton boton-fantasma"
-                onClick={() => jugar(pendiente, false)}
-              >
-                Jugar callado
-              </button>
+      {!terminada && game.phase === 'reparto' && soyRepartidor && reparto.first === null && (
+        <div className="capa capa-quieta">
+          <div className="panel-pila">
+            {game.lastHand && <ResumenMano resumen={game.lastHand} room={room} game={game} />}
+            <div className="panel">
+              <h3>Te toca repartir</h3>
+              <p className="panel-pista">
+                ¿Reparto primero a los jugadores, o empiezo poniendo las cartas de la mesa?
+              </p>
+              <div className="panel-botones">
+                <button
+                  type="button"
+                  className="boton"
+                  onClick={() => setReparto((p) => ({ ...p, first: 'manos' }))}
+                >
+                  A los jugadores primero
+                </button>
+                <button
+                  type="button"
+                  className="boton boton-fantasma"
+                  onClick={() => setReparto((p) => ({ ...p, first: 'mesa' }))}
+                >
+                  La mesa primero
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {!terminada && game.phase === 'reparto' && (
+      {!terminada && game.phase === 'reparto' && !soyRepartidor && (
         <div className="capa capa-quieta">
           <div className="panel-pila">
             {game.lastHand && <ResumenMano resumen={game.lastHand} room={room} game={game} />}
-            {game.legalMoves.length > 0 ? (
-              <ModalReparto game={game} onRepartir={repartir} />
-            ) : (
-              <div className="panel">
-                <h3>Reparte {nombre(game.dealer)}</h3>
-                <p className="panel-pista">Está eligiendo cómo echar las cartas…</p>
-              </div>
-            )}
+            <div className="panel">
+              <h3>Reparte {nombre(game.dealer)}</h3>
+              <p className="panel-pista">Está barajando y decidiendo cómo echar las cartas…</p>
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* Instrucción del conteo, pegada abajo para no tapar la mesa. */}
+      {yoCuento && reparto.direction === null && (
+        <div className="mesa-instruccion">
+          Toca el <strong>1</strong> para contar hacia arriba, o el <strong>4</strong> para contar
+          hacia abajo
+        </div>
+      )}
+      {yoCuento && contando && reparto.direction !== null && (
+        <div className="mesa-instruccion">
+          Sigue contando: toca el <strong>{SECUENCIA[reparto.direction][reparto.revelados]}</strong>
         </div>
       )}
 
@@ -425,6 +476,35 @@ export default function Mesa({ room, game, acciones, onSalir }) {
       )}
 
       {error && <div className="mesa-error aviso-error">{error}</div>}
+    </div>
+  )
+}
+
+function ResumenMano({ resumen, room, game }) {
+  return (
+    <div className="panel panel-resumen">
+      <h3>Cerró la mano {resumen.number}</h3>
+      <ul className="resumen-lista">
+        {resumen.cards.map((linea) => (
+          <li key={linea.team}>
+            <span>{game.teams[linea.team].map((s) => room.seats[s]?.name).join(' y ')}</span>
+            <span className="resumen-detalle">
+              {linea.cards} cartas contra {linea.threshold}
+              {linea.points > 0 && <strong> +{linea.points}</strong>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {resumen.cantos.length > 0 && (
+        <div className="resumen-cantos">
+          {resumen.cantos.map((canto) => (
+            <span key={canto.id} className={`canto-chip ${canto.killed ? 'canto-muerto' : ''}`}>
+              {room.seats[canto.seat]?.name}: {nombreCanto(canto.type)} {canto.points}
+              {canto.killed && ' (matado)'}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
