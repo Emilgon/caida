@@ -1,6 +1,6 @@
 import { GameError } from "./errors.js";
 import { caidaPoints, createDeck, nextValue } from "./deck.js";
-import { detectCanto } from "./cantos.js";
+import { compareRank, detectCanto } from "./cantos.js";
 import { createRng, normalizeSeed, shuffle } from "./rng.js";
 
 export const MODES = ["tradicional", "mayor-canto"];
@@ -305,28 +305,50 @@ function resolveCantos(match) {
   const alive = hand.declaredCantos.filter((canto) => !canto.killed);
   if (alive.length === 0) return;
 
-  // Los cantos compiten entre si dentro de la MISMA tanda de 3 cartas, que es
-  // cuando todos tienen mano comparable. Una mano dura todo el mazo (varias
-  // tandas), y no tiene sentido enfrentar una Ronda de la tanda 1 contra otra
-  // de la tanda 5.
-  //   Tradicional: dentro de la tanda, cada TIPO se resuelve por separado.
-  //   Mayor Canto: dentro de la tanda solo cuenta el mas alto, del tipo que sea.
-  const key =
-    match.mode === "mayor-canto"
-      ? (canto) => `${canto.deal}`
-      : (canto) => `${canto.deal}:${canto.type}`;
+  // Tradicional: todos los cantos suman, cada uno por su cuenta. Lo unico que
+  // le quita puntos a un canto es que te lo maten.
+  if (match.mode === "tradicional") {
+    for (const canto of alive) {
+      const team = teamOf(match, canto.seat);
+      match.log.push({
+        type: "canto-cobrado",
+        team,
+        canto: canto.type,
+        deal: canto.deal,
+        points: canto.points,
+        seats: [canto.seat],
+      });
+      addScore(match, team, canto.points, "canto");
+    }
+    return;
+  }
 
+  // Mayor Canto: solo cobra el canto mas alto, y se compara dentro de la MISMA
+  // tanda de 3 cartas, que es cuando todos tienen mano comparable. Una mano
+  // dura todo el mazo (varias tandas) y no tiene sentido enfrentar un canto de
+  // la tanda 1 contra otro de la tanda 5.
   const buckets = new Map();
   for (const canto of alive) {
-    const bucket = buckets.get(key(canto));
+    const bucket = buckets.get(canto.deal);
     if (bucket) bucket.push(canto);
-    else buckets.set(key(canto), [canto]);
+    else buckets.set(canto.deal, [canto]);
   }
-  const groups = [...buckets.values()];
 
-  for (const group of groups) {
+  for (const group of buckets.values()) {
     const best = Math.max(...group.map((canto) => canto.points));
-    const leaders = group.filter((canto) => canto.points === best);
+    let leaders = group.filter((canto) => canto.points === best);
+
+    // Mismos puntos no es lo mismo que empate: una patrulla 4,5,6 le gana a
+    // una 1,2,3 aunque las dos valgan 6. Solo se pisan si tambien coinciden
+    // los numeros de las cartas.
+    if (leaders.length > 1) {
+      let top = leaders[0].rank;
+      for (const canto of leaders) {
+        if (compareRank(canto.rank, top) > 0) top = canto.rank;
+      }
+      leaders = leaders.filter((canto) => compareRank(canto.rank, top) === 0);
+    }
+
     const teams = new Set(leaders.map((canto) => teamOf(match, canto.seat)));
 
     if (teams.size > 1) {
@@ -470,6 +492,7 @@ function playCard(match, seat, plan, declare) {
       deal: hand.deals,
       type: canto.type,
       points: canto.points,
+      rank: canto.rank,
       killed: false,
     };
     hand.declaredCantos.push(entry);

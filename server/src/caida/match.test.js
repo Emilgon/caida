@@ -362,6 +362,18 @@ describe("cantos en la mesa", () => {
     assert.equal(next.scores[1], 0);
     assert.equal(next.hand.declaredCantos[0].points, 4);
   });
+
+  it("el canto declarado guarda con que numeros se canto, para desempatar", () => {
+    const match = scenario({
+      turn: 1,
+      hands: [[], cards("oros-4", "copas-5", "espadas-6")],
+      table: cards("bastos-1"),
+    });
+    const next = applyMove(match, 1, { type: "jugar", card: "oros-4", cantar: true });
+    const [canto] = next.hand.declaredCantos;
+    assert.equal(canto.type, "patrulla");
+    assert.deepEqual(canto.rank, [5], "la posicion del 6, la mas alta de la escalera");
+  });
 });
 
 describe("mata canto", () => {
@@ -494,7 +506,7 @@ describe("cierre de la mano", () => {
     assert.equal(next.lastHand.number, 1);
   });
 
-  it("modo tradicional: cada tipo de canto cobra por separado", () => {
+  it("modo tradicional: todos los cantos suman, cada uno por su cuenta", () => {
     const next = closing({
       captured: [20, 16],
       lastCapturer: 1,
@@ -507,7 +519,7 @@ describe("cierre de la mano", () => {
     assert.equal(next.scores[1], 6);
   });
 
-  it("modo tradicional: dos Rondas, solo cobra la mas alta", () => {
+  it("modo tradicional: dos Rondas rivales cobran las dos", () => {
     const next = closing({
       captured: [20, 16],
       lastCapturer: 1,
@@ -517,29 +529,99 @@ describe("cierre de la mano", () => {
       ],
     });
     assert.equal(next.scores[0], 4);
-    assert.equal(next.scores[1], 0);
+    assert.equal(next.scores[1], 1);
   });
 
-  it("dos cantos iguales de rivales se pisan: no cobra ninguno", () => {
+  it("modo tradicional: dos cantos identicos de rivales cobran los dos", () => {
     const next = closing({
       captured: [20, 16],
       lastCapturer: 1,
       declaredCantos: [
-        { id: "a", seat: 0, deal: 1, type: "ronda", points: 3, killed: false },
-        { id: "b", seat: 1, deal: 1, type: "ronda", points: 3, killed: false },
+        { id: "a", seat: 0, deal: 1, type: "ronda", points: 3, rank: [8], killed: false },
+        { id: "b", seat: 1, deal: 1, type: "ronda", points: 3, rank: [8], killed: false },
       ],
     });
-    assert.deepEqual(next.scores, [0, 0]);
+    assert.deepEqual(next.scores, [3, 3]);
   });
 
-  it("dos cantos iguales de la MISMA pareja cobran una sola vez", () => {
+  it("modo tradicional: la pareja suma los dos cantos", () => {
     const next = closing({
       players: 4,
       captured: [10, 10, 10, 6],
       lastCapturer: 3,
       declaredCantos: [
         { id: "a", seat: 0, deal: 1, type: "ronda", points: 3, killed: false },
-        { id: "b", seat: 2, deal: 1, type: "ronda", points: 3, killed: false },
+        { id: "b", seat: 2, deal: 1, type: "patrulla", points: 6, killed: false },
+      ],
+    });
+    assert.equal(next.scores[0], 9);
+    assert.equal(next.scores[1], 0);
+  });
+
+  it("modo tradicional: lo unico que quita un canto es que te lo maten", () => {
+    const next = closing({
+      captured: [20, 16],
+      lastCapturer: 1,
+      declaredCantos: [
+        { id: "a", seat: 0, deal: 1, type: "patrulla", points: 6, killed: true },
+        { id: "b", seat: 1, deal: 1, type: "ronda", points: 1, killed: false },
+      ],
+    });
+    assert.equal(next.scores[0], 0);
+    assert.equal(next.scores[1], 1);
+  });
+
+  it("mayor canto: patrulla 4,5,6 le gana a patrulla 1,2,3 aunque valgan 6 las dos", () => {
+    const next = closing({
+      mode: "mayor-canto",
+      captured: [20, 16],
+      lastCapturer: 1,
+      declaredCantos: [
+        // rank = posicion de la carta mas alta: el 3 esta en la 2, el 6 en la 5.
+        { id: "baja", seat: 0, deal: 1, type: "patrulla", points: 6, rank: [2], killed: false },
+        { id: "alta", seat: 1, deal: 1, type: "patrulla", points: 6, rank: [5], killed: false },
+      ],
+    });
+    assert.equal(next.scores[0], 0);
+    assert.equal(next.scores[1], 6);
+  });
+
+  it("mayor canto: ronda de 5 le gana a ronda de 3, aunque las dos valgan 1", () => {
+    const next = closing({
+      mode: "mayor-canto",
+      captured: [20, 16],
+      lastCapturer: 1,
+      declaredCantos: [
+        { id: "tres", seat: 0, deal: 1, type: "ronda", points: 1, rank: [2], killed: false },
+        { id: "cinco", seat: 1, deal: 1, type: "ronda", points: 1, rank: [4], killed: false },
+      ],
+    });
+    assert.equal(next.scores[0], 0);
+    assert.equal(next.scores[1], 1);
+  });
+
+  it("mayor canto: dos cantos identicos de rivales se pisan", () => {
+    const next = closing({
+      mode: "mayor-canto",
+      captured: [20, 16],
+      lastCapturer: 1,
+      declaredCantos: [
+        { id: "a", seat: 0, deal: 1, type: "ronda", points: 3, rank: [8], killed: false },
+        { id: "b", seat: 1, deal: 1, type: "ronda", points: 3, rank: [8], killed: false },
+      ],
+    });
+    assert.deepEqual(next.scores, [0, 0]);
+  });
+
+  it("mayor canto: dos cantos identicos de la MISMA pareja cobran una sola vez", () => {
+    const next = closing({
+      players: 4,
+      mode: "mayor-canto",
+      captured: [10, 10, 10, 6],
+      lastCapturer: 3,
+      declaredCantos: [
+        { id: "a", seat: 0, deal: 1, type: "ronda", points: 3, rank: [8], killed: false },
+        { id: "b", seat: 2, deal: 1, type: "ronda", points: 3, rank: [8], killed: false },
       ],
     });
     assert.equal(next.scores[0], 3);

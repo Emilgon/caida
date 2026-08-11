@@ -41,8 +41,23 @@ function pairValue(values) {
   return null;
 }
 
-function canto(type, points, cards) {
-  return { type, points, cards: cards.map((card) => card.id) };
+// `rank` desempata dos cantos del MISMO tipo y los MISMOS puntos: una
+// patrulla 4,5,6 le gana a una 1,2,3, y una ronda de 5 a una de 3 (las dos
+// valen 1). Es la lista de posiciones (1 < 2 < ... < 7 < 10 < 11 < 12) de las
+// cartas que deciden, en orden de importancia, y se compara elemento a
+// elemento. Los cantos de composicion fija (Registro, Casa Chica...) llevan
+// rank vacio: dos iguales siempre se pisan.
+function canto(type, points, cards, rank = []) {
+  return { type, points, cards: cards.map((card) => card.id), rank };
+}
+
+/** > 0 si `a` gana, < 0 si gana `b`, 0 si estan empatados del todo. */
+export function compareRank(a = [], b = []) {
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    const diff = (a[i] ?? -1) - (b[i] ?? -1);
+    if (diff !== 0) return diff;
+  }
+  return 0;
 }
 
 /**
@@ -64,17 +79,23 @@ export function detectCanto(cards) {
   if (isExactly(values, [1, 11, 12])) return canto(CANTOS.REGISTRO, 8, cards);
 
   // Vigia: par + una carta consecutiva a ese par (7,7,10 vale, 7,7,12 no).
+  // Manda el par; si dos vigias tienen el mismo par, decide la suelta.
   if (pair !== null) {
     const loose = values.find((value) => value !== pair);
-    if (areConsecutive(pair, loose)) return canto(CANTOS.VIGIA, 7, cards);
+    if (areConsecutive(pair, loose)) {
+      return canto(CANTOS.VIGIA, 7, cards, [orderIndex(pair), orderIndex(loose)]);
+    }
   }
 
-  if (areConsecutive(a, b) && areConsecutive(b, c)) return canto(CANTOS.PATRULLA, 6, cards);
-  if (a === b && b === c) return canto(CANTOS.TRIVILIN, 5, cards);
+  // En la patrulla decide la carta mas alta de la escalera.
+  if (areConsecutive(a, b) && areConsecutive(b, c)) {
+    return canto(CANTOS.PATRULLA, 6, cards, [orderIndex(c)]);
+  }
+  if (a === b && b === c) return canto(CANTOS.TRIVILIN, 5, cards, [orderIndex(a)]);
 
   if (pair !== null) {
     const pairCards = cards.filter((card) => card.value === pair);
-    return canto(CANTOS.RONDA, caidaPoints(pair), pairCards);
+    return canto(CANTOS.RONDA, caidaPoints(pair), pairCards, [orderIndex(pair)]);
   }
 
   return null;

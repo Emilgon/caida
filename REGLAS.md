@@ -53,7 +53,7 @@ Una mano de 3 cartas forma como máximo **un** canto: si encaja en varios
 |---|---|---|
 | Ronda | par + 1 carta suelta | según el valor del par: 1-7→1, 10→2, 11→3, 12→4 |
 | Trivilín / Marisco | trío | 5 |
-| Patrulla | escalera de 3 consecutivas | 6 |
+| Patrulla | escalera de 3 consecutivas, cualquier palo | 6 |
 | Vigía | par + 1 consecutiva | 7 |
 | Registro | 1, 11, 12 | 8 |
 | Registrico | 1, 10, 11 | 10 |
@@ -65,24 +65,34 @@ quien cantó (el turno siguiente, nadie más adelante) puede matárselo,
 haciendo caída sobre esa misma carta. El canto se anula del todo, y quien
 mató se anota los puntos de la CAÍDA (tabla de abajo), no los del canto.
 
-Los cantos compiten **dentro de la misma tanda**, que es cuando todos tienen
-mano comparable. Una Ronda de la tanda 1 no se enfrenta a otra de la tanda 4.
+**Modo Tradicional**: **todos los cantos suman**, cada uno su valor de tabla,
+sin competir entre sí. Dos jugadores con Ronda cobran los dos; los dos de una
+misma pareja también. Lo único que le quita puntos a un canto es que te lo
+maten.
 
-**Modo Tradicional**: cada canto vale su tabla propia, independiente de los
-demás, salvo que lo maten. Si dos jugadores cantan el mismo tipo en la misma
-tanda (típico: Ronda) y a ninguno lo matan, solo se anota el de mayor valor.
+**Modo Mayor Canto**: solo cobra el canto **más alto**, y se compara **dentro
+de la misma tanda** — que es cuando todos tienen mano comparable; un canto de
+la tanda 1 no se enfrenta a uno de la tanda 4. Entran todos los jugadores,
+**tu pareja incluida**: si tú tienes Vigía (7) y tu pareja Patrulla (6), la
+pareja anota 7, no 13. Los cantos matados se descartan antes de comparar, así
+que si a ti te matan la Vigía cobra la Patrulla de tu pareja — siempre que
+ningún contrincante tenga uno más alto.
 
-**Modo Mayor Canto**: dentro de cada tanda solo cuenta el canto más alto que
-haya en la mesa, de cualquier tipo (comparando por su valor en la tabla) y de
-cualquier jugador, **tu pareja incluida**: si tú tienes Vigía (7) y tu pareja
-Patrulla (6), la pareja anota 7, no 13. Los cantos matados se descartan antes
-de comparar, así que si a ti te matan la Vigía cobra la Patrulla de tu
-pareja — siempre que ningún contrincante tenga uno más alto. El mata canto
-sigue existiendo igual.
+Para saber cuál es "el más alto" en este modo, primero mandan los puntos de
+la tabla, y **si empatan, manda el número de las cartas**: una Patrulla 4,5,6
+le gana a una 1,2,3 aunque las dos valgan 6, y una Ronda de 5 le gana a una
+de 3 aunque las dos valgan 1. Qué carta decide según el canto:
 
-**Empates**: si el canto ganador está empatado en puntos entre rivales, se
-pisan y no anota ninguno. Si el empate es entre los dos de una misma pareja,
-la pareja lo cobra una sola vez.
+- **Ronda**: el valor del par (la carta suelta no influye).
+- **Trivilín**: el valor del trío.
+- **Patrulla**: la carta más alta de la escalera.
+- **Vigía**: el par, y si también empata, la carta suelta.
+- **Registro, Registrico, Casa Chica, Casa Grande**: composición fija, dos
+  iguales están siempre empatados.
+
+Si aun así hay empate exacto entre **rivales**, se pisan y no anota ninguno.
+Si el empate es entre los dos de una misma pareja, la pareja lo cobra una
+sola vez.
 
 Todo esto se resuelve **al cerrar la mano**, cuando ya se declararon todos
 los cantos posibles. Declarar no da puntos en el momento.

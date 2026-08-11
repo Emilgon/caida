@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { CANTOS, detectCanto } from "./cantos.js";
+import { CANTOS, compareRank, detectCanto } from "./cantos.js";
 import { cards } from "./testing.js";
 
 function canto(...ids) {
@@ -94,5 +94,53 @@ describe("deteccion de cantos", () => {
   it("no canta con una mano incompleta", () => {
     assert.equal(detectCanto(cards("oros-5", "copas-5")), null);
     assert.equal(detectCanto([]), null);
+  });
+});
+
+describe("desempate entre cantos del mismo tipo", () => {
+  const gana = (a, b) => compareRank(canto(...a).rank, canto(...b).rank) > 0;
+  const empatan = (a, b) => compareRank(canto(...a).rank, canto(...b).rank) === 0;
+
+  it("patrulla: manda la carta mas alta de la escalera", () => {
+    assert.ok(gana(["oros-4", "copas-5", "espadas-6"], ["oros-1", "copas-2", "espadas-3"]));
+    assert.ok(gana(["oros-10", "copas-11", "espadas-12"], ["oros-5", "copas-6", "espadas-7"]));
+    // Mismos numeros, distinto palo: se pisan.
+    assert.ok(empatan(["oros-4", "copas-5", "espadas-6"], ["bastos-4", "oros-5", "copas-6"]));
+  });
+
+  it("ronda: manda el valor del par aunque las dos valgan 1 punto", () => {
+    const alta = canto("oros-5", "copas-5", "espadas-12");
+    const baja = canto("oros-3", "copas-3", "espadas-12");
+    assert.equal(alta.type, CANTOS.RONDA);
+    assert.equal(alta.points, baja.points, "las dos valen 1");
+    assert.ok(compareRank(alta.rank, baja.rank) > 0);
+  });
+
+  it("ronda: el as es el par mas bajo", () => {
+    assert.ok(gana(["oros-2", "copas-2", "espadas-7"], ["oros-1", "copas-1", "espadas-7"]));
+  });
+
+  it("ronda: la carta suelta no influye", () => {
+    assert.ok(empatan(["oros-5", "copas-5", "espadas-12"], ["bastos-5", "espadas-5", "oros-2"]));
+  });
+
+  it("trivilin: manda el valor del trio", () => {
+    assert.ok(gana(["oros-7", "copas-7", "espadas-7"], ["oros-4", "copas-4", "espadas-4"]));
+  });
+
+  it("vigia: manda el par, y si empata decide la suelta", () => {
+    assert.ok(gana(["oros-6", "copas-6", "espadas-7"], ["oros-5", "copas-5", "espadas-6"]));
+    assert.ok(gana(["oros-6", "copas-6", "espadas-7"], ["oros-6", "copas-6", "espadas-5"]));
+  });
+
+  it("los cantos de composicion fija siempre se pisan", () => {
+    for (const trio of [
+      ["oros-1", "copas-11", "espadas-12"],
+      ["oros-1", "copas-10", "espadas-11"],
+      ["oros-1", "copas-11", "espadas-11"],
+      ["oros-1", "copas-12", "espadas-12"],
+    ]) {
+      assert.deepEqual(canto(...trio).rank, [], `${canto(...trio).type} no deberia desempatar`);
+    }
   });
 });

@@ -67,7 +67,7 @@ export function scenario({
       captured: captured ?? Array.from({ length: players }, () => []),
       canto: filledHands.map((handCards) => detectCanto(handCards)),
       declared: filledHands.map(() => false),
-      declaredCantos: declaredCantos.map((canto) => ({ ...canto })),
+      declaredCantos: declaredCantos.map((canto) => ({ rank: [], ...canto })),
       turn: turn ?? (dealer + 1) % players,
       lastPlayed,
       pendingCanto,
