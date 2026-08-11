@@ -83,6 +83,28 @@
   --texto: #0d2419;
 }
 
+/* Explicación de la opción elegida. Aparece y desaparece al cambiar. */
+.opcion-explica {
+  margin: 0.1rem 0 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 0.3);
+  border-left: 3px solid var(--oro);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  letter-spacing: normal;
+  text-transform: none;
+  color: rgb(246 239 221 / 0.78);
+  animation: explica-abre 0.22s ease-out;
+}
+
+@keyframes explica-abre {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 .menu-credito {
   margin: 0.2rem 0 0;
   font-size: 0.7rem;

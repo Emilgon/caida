@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 
 import { DIBUJOS, PALOS } from './palos.jsx'
 import { FIGURAS } from './figuras.jsx'
@@ -205,25 +206,38 @@ export function Dorso({ className = '', style }) {
   )
 }
 
+// El vuelo de una carta: rápido, con un punto de rebote, como cuando alguien
+// la suelta de verdad sobre el paño. Sin esto las cartas se teletransportan.
+export const VUELO = { type: 'spring', stiffness: 420, damping: 34, mass: 0.9 }
+
 /**
  * Una carta boca arriba.
+ *
  * `estado`: 'jugable' (puedes soltarla), 'capturable' (se la llevaría la carta
- * que estás mirando), 'apagada' (no toca), 'cayendo' (te la acaban de caer).
+ * que estás mirando), 'apagada' (no toca).
+ *
+ * `vuela`: le da a la carta su identidad de animación. Con la misma carta
+ * montada en dos sitios distintos a lo largo del tiempo (tu mano y luego la
+ * mesa), Motion la hace VOLAR de uno a otro en vez de desaparecer y aparecer.
  */
 export default function Carta({
   carta,
   estado = '',
-  seleccionada = false,
+  vuela = false,
   onClick,
   onPointerEnter,
   onPointerLeave,
   className = '',
   style,
   title,
+  initial,
+  animate,
+  exit,
+  transition,
 }) {
   const { suit: palo, value: valor } = carta
   const interactiva = typeof onClick === 'function'
-  const Etiqueta = interactiva ? 'button' : 'div'
+  const Etiqueta = interactiva ? motion.button : motion.div
   // En estado, no tocando la clase a mano: React reescribe className en cada
   // render y se llevaría por delante cualquier clase puesta desde fuera.
   const [falla, setFalla] = useState(false)
@@ -231,11 +245,18 @@ export default function Carta({
   return (
     <Etiqueta
       type={interactiva ? 'button' : undefined}
+      layout={vuela}
+      layoutId={vuela ? carta.id : undefined}
+      transition={transition ?? VUELO}
+      initial={initial}
+      animate={animate}
+      exit={exit}
+      whileHover={estado === 'jugable' ? { y: -18, scale: 1.05 } : undefined}
+      whileTap={estado === 'jugable' ? { scale: 0.98 } : undefined}
       className={[
         'carta',
         `carta-${palo}`,
         estado && `carta-${estado}`,
-        seleccionada && 'carta-seleccionada',
         interactiva && 'carta-interactiva',
         className,
       ]

@@ -210,6 +210,16 @@ export function legalMoves(match, seat) {
 
 function dealThree(match) {
   const hand = match.hand;
+  const tandaVieja = hand.deals;
+
+  // Repartir corta el hilo de la ronda. Ni se puede caer sobre la carta que
+  // quedo en la mesa de la tanda anterior —la caida es sobre la carta que
+  // acaba de soltar el de al lado, jugando— ni queda ventana para matar un
+  // canto: quien lo canto ya se lo gano.
+  hand.lastPlayed = null;
+  hand.pendingCanto = null;
+  resolveCantos(match, tandaVieja);
+
   for (let round = 0; round < HAND_SIZE; round += 1) {
     for (let offset = 1; offset <= match.players; offset += 1) {
       const seat = (hand.dealer + offset) % match.players;
@@ -313,41 +323,59 @@ function dealHand(match, { first, direction }) {
 // Cierre de la mano
 // ---------------------------------------------------------------------------
 
-function resolveCantos(match) {
-  const hand = match.hand;
-  const alive = hand.declaredCantos.filter((canto) => !canto.killed);
-  if (alive.length === 0) return;
+/**
+ * Cobra un canto que ya esta a salvo. En Tradicional esto pasa en cuanto se
+ * cierra la ventana del mata canto, no al final de la mano: si cantas Patrulla
+ * y el de tu derecha no te cae, los 6 puntos son tuyos ya, en el marcador.
+ */
+function pagarCanto(match, canto) {
+  if (canto.killed || canto.paid) return;
+  canto.paid = true;
+  const team = teamOf(match, canto.seat);
+  pushLog(match, {
+    type: "canto-cobrado",
+    team,
+    canto: canto.type,
+    deal: canto.deal,
+    points: canto.points,
+    seats: [canto.seat],
+  });
+  addScore(match, team, canto.points, "canto");
+}
 
-  // Tradicional: todos los cantos suman, cada uno por su cuenta. Lo unico que
-  // le quita puntos a un canto es que te lo maten.
+/**
+ * Cierra los cantos de una tanda.
+ *
+ * En Tradicional cada canto ya se cobro solo al quedar a salvo, asi que aqui
+ * solo quedan los que se declararon sin que nadie llegara a tener turno para
+ * matarlos (por ejemplo, cantar con la ultima carta de la tanda).
+ *
+ * En Mayor Canto no se puede pagar al instante: hay que comparar con los demas
+ * cantos de la misma tanda, y para eso hay que esperar a que la tanda termine.
+ */
+function resolveCantos(match, soloTanda = null) {
+  const hand = match.hand;
+  const pendientes = hand.declaredCantos.filter(
+    (canto) => !canto.killed && !canto.paid && (soloTanda === null || canto.deal === soloTanda),
+  );
+  if (pendientes.length === 0) return;
+
   if (match.mode === "tradicional") {
-    for (const canto of alive) {
-      const team = teamOf(match, canto.seat);
-      pushLog(match, {
-        type: "canto-cobrado",
-        team,
-        canto: canto.type,
-        deal: canto.deal,
-        points: canto.points,
-        seats: [canto.seat],
-      });
-      addScore(match, team, canto.points, "canto");
-    }
+    for (const canto of pendientes) pagarCanto(match, canto);
     return;
   }
 
-  // Mayor Canto: solo cobra el canto mas alto, y se compara dentro de la MISMA
-  // tanda de 3 cartas, que es cuando todos tienen mano comparable. Una mano
-  // dura todo el mazo (varias tandas) y no tiene sentido enfrentar un canto de
-  // la tanda 1 contra otro de la tanda 5.
+  // Mayor Canto: solo cobra el canto mas alto, comparado dentro de la MISMA
+  // tanda de 3 cartas, que es cuando todos tienen mano comparable.
   const buckets = new Map();
-  for (const canto of alive) {
+  for (const canto of pendientes) {
     const bucket = buckets.get(canto.deal);
     if (bucket) bucket.push(canto);
     else buckets.set(canto.deal, [canto]);
   }
 
   for (const group of buckets.values()) {
+    for (const canto of group) canto.paid = true;
     const best = Math.max(...group.map((canto) => canto.points));
     let leaders = group.filter((canto) => canto.points === best);
 
@@ -493,12 +521,18 @@ function playCard(match, seat, plan, declare) {
     pushLog(next, { type: "lanzar", seat, card: card.id });
   }
 
-  // Mata canto: solo el de la derecha del que canto, cayendole a esa misma carta.
-  if (pending && isCaida && capture.taken.some((c) => c.id === pending.card)) {
-    const victim = hand.declaredCantos.find((canto) => canto.id === pending.id);
-    victim.killed = true;
-    victim.killedBy = seat;
-    pushLog(next, { type: "mata-canto", seat, victim: pending.seat, canto: victim.type });
+  // Mata canto: solo el de la derecha del que canto, cayendole a esa misma
+  // carta. Se resuelve AHORA, en este turno: o muere, o queda a salvo y se
+  // cobra al momento.
+  if (pending) {
+    const cantado = hand.declaredCantos.find((canto) => canto.id === pending.id);
+    if (isCaida && capture.taken.some((c) => c.id === pending.card)) {
+      cantado.killed = true;
+      cantado.killedBy = seat;
+      pushLog(next, { type: "mata-canto", seat, victim: pending.seat, canto: cantado.type });
+    } else if (next.mode === "tradicional") {
+      pagarCanto(next, cantado);
+    }
   }
 
   if (declare) {
@@ -517,8 +551,11 @@ function playCard(match, seat, plan, declare) {
     pushLog(next, { type: "canto", seat, canto: canto.type, points: canto.points });
 
     // Solo es matable si la carta cantada quedo en la mesa. Si cantaste
-    // haciendo caida, la carta se fue a tu monton y nadie te la puede matar.
-    if (!capture) {
+    // haciendo caida, la carta se fue a tu monton, nadie te la puede matar y
+    // los puntos son tuyos ya mismo.
+    if (capture) {
+      if (next.mode === "tradicional") pagarCanto(next, entry);
+    } else {
       hand.pendingCanto = { id: entry.id, seat, card: card.id, value: card.value };
     }
   }

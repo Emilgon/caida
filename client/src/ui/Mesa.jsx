@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, LayoutGroup, MotionConfig } from 'motion/react'
 
-import Carta, { Dorso } from '../cartas/Carta.jsx'
+import Carta, { Dorso, VUELO } from '../cartas/Carta.jsx'
 import Jugador from './Jugador.jsx'
 import Marcador from './Marcador.jsx'
 import Reparto, { SECUENCIA } from './Reparto.jsx'
 import { alternarSilencio, estaEnSilencio, sonido } from '../sonido.js'
-import { burbujaDe, burbujaVictima, cartaDeId, lineaDe, nombreCanto, sonar } from './narracion.js'
+import { burbujaDe, burbujaVictima, lineaDe, nombreCanto, sonar } from './narracion.js'
 import './mesa.css'
 
 // Dónde se sienta cada quien en pantalla. El turno corre hacia la derecha, así
@@ -16,12 +17,13 @@ const POSICIONES = {
   4: ['yo', 'derecha', 'arriba', 'izquierda'],
 }
 
-// Hacia dónde vuelan las cartas capturadas, según dónde esté quien capturó.
+// Hacia dónde salen volando las cartas capturadas, según dónde esté sentado
+// quien capturó. En píxeles, relativo al centro de la mesa.
 const RUMBO = {
-  yo: ['0px', '160px'],
-  arriba: ['0px', '-160px'],
-  izquierda: ['-220px', '-30px'],
-  derecha: ['220px', '-30px'],
+  yo: { x: 0, y: 340 },
+  arriba: { x: 0, y: -300 },
+  izquierda: { x: -560, y: -40 },
+  derecha: { x: 560, y: -40 },
 }
 
 // Cuánto se queda en pantalla lo que acaba de pasar. Va con el ritmo de los
@@ -33,7 +35,7 @@ export default function Mesa({ room, game, acciones, onSalir }) {
   const [resaltadas, setResaltadas] = useState([])
   const [burbujas, setBurbujas] = useState({}) // asiento -> aviso
   const [linea, setLinea] = useState(null)
-  const [fantasmas, setFantasmas] = useState([]) // cartas volando al montón
+  const [rumbo, setRumbo] = useState(RUMBO.arriba) // hacia dónde salen las capturadas
   const [golpe, setGolpe] = useState(null) // 'caida' | 'mesa'
   const [error, setError] = useState(null)
   const [silencio, setSilencio] = useState(estaEnSilencio)
@@ -43,7 +45,6 @@ export default function Mesa({ room, game, acciones, onSalir }) {
 
   const vistos = useRef(null)
   const eraMiTurno = useRef(false)
-  const mesaPrevia = useRef([])
   const relojes = useRef([])
 
   const nombre = useCallback((seat) => room.seats[seat]?.name ?? `Asiento ${seat + 1}`, [room])
@@ -94,14 +95,10 @@ export default function Mesa({ room, game, acciones, onSalir }) {
       const texto = lineaDe(evento)
       if (texto) ultimaLinea = texto
 
-      // Las cartas capturadas siguen un momento en pantalla, volando hacia el
-      // montón de quien capturó. Salen de la mesa de ANTES de la jugada.
+      // Quien capturó decide hacia dónde salen volando las cartas: Motion las
+      // saca de la mesa en esa dirección al desmontarlas.
       if (evento.type === 'caida' || evento.type === 'recoger') {
-        const previas = mesaPrevia.current
-        const vuelan = [...evento.taken.map((id) => previas.find((c) => c.id === id) ?? cartaDeId(id)), cartaDeId(evento.card)]
-        const [x, y] = RUMBO[posicionDe(evento.seat)] ?? RUMBO.arriba
-        setFantasmas(vuelan.map((carta, i) => ({ ...carta, clave: `${game.eventCount}-${i}`, x, y })))
-        enUnRato(() => setFantasmas([]), 750)
+        setRumbo(RUMBO[posicionDe(evento.seat)] ?? RUMBO.arriba)
         setGolpe(evento.type === 'caida' ? 'caida' : evento.mesaLimpia ? 'mesa' : null)
         enUnRato(() => setGolpe(null), 800)
       }
@@ -129,11 +126,6 @@ export default function Mesa({ room, game, acciones, onSalir }) {
       enUnRato(() => setLinea((actual) => (actual === ultimaLinea ? null : actual)), DURACION_LINEA)
     }
   }, [game, enUnRato, posicionDe])
-
-  // Guardamos la mesa de cada momento para poder animar lo que se llevaron.
-  useEffect(() => {
-    mesaPrevia.current = mano?.table ?? []
-  }, [mano?.table])
 
   // --- Alarma de turno -----------------------------------------------------
   useEffect(() => {
@@ -229,6 +221,11 @@ export default function Mesa({ room, game, acciones, onSalir }) {
     : (mano?.table ?? [])
 
   return (
+    // LayoutGroup es lo que hace que una carta se reconozca a sí misma entre
+    // tu mano y la mesa: sin él Motion no sabría que son la misma y volvería
+    // a lo de antes, desaparecer aquí y aparecer allá.
+    <MotionConfig reducedMotion="user">
+      <LayoutGroup>
     <div className={`mesa mesa-${room.config.players}`}>
       <div className="mesa-barra">
         <span className="mesa-codigo">{room.code}</span>
@@ -291,28 +288,21 @@ export default function Mesa({ room, game, acciones, onSalir }) {
                 {visiblesEnMesa.length === 0 && game.phase === 'juego' && (
                   <span className="mesa-vacia">Mesa limpia</span>
                 )}
-                {visiblesEnMesa.map((carta) => (
-                  <Carta
-                    key={carta.id}
-                    carta={carta}
-                    estado={resaltadas.includes(carta.id) ? 'capturable' : ''}
-                    className={mano?.lastPlayed?.id === carta.id ? 'carta-recien-jugada' : ''}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Las que se acaban de llevar, volando hacia su montón. */}
-            {fantasmas.length > 0 && (
-              <div className="mesa-fantasmas" aria-hidden="true">
-                {fantasmas.map((carta) => (
-                  <Carta
-                    key={carta.clave}
-                    carta={carta}
-                    className="carta-capturada"
-                    style={{ '--hacia-x': carta.x, '--hacia-y': carta.y }}
-                  />
-                ))}
+                {/* AnimatePresence deja que una carta se vaya volando en vez
+                    de desaparecer de golpe al capturarla. */}
+                <AnimatePresence mode="popLayout">
+                  {visiblesEnMesa.map((carta) => (
+                    <Carta
+                      key={carta.id}
+                      carta={carta}
+                      vuela
+                      estado={resaltadas.includes(carta.id) ? 'capturable' : ''}
+                      className={mano?.lastPlayed?.id === carta.id ? 'carta-cayendo' : ''}
+                      exit={{ ...rumbo, scale: 0.5, opacity: 0, rotate: 14 }}
+                      transition={VUELO}
+                    />
+                  ))}
+                </AnimatePresence>
               </div>
             )}
           </div>
@@ -373,6 +363,7 @@ export default function Mesa({ room, game, acciones, onSalir }) {
               <Carta
                 key={carta.id}
                 carta={carta}
+                vuela
                 estado={jugable ? 'jugable' : 'apagada'}
                 className={esDelCanto ? 'carta-del-canto' : ''}
                 onClick={jugable ? () => jugarCarta(move) : undefined}
@@ -485,6 +476,8 @@ export default function Mesa({ room, game, acciones, onSalir }) {
 
       {error && <div className="mesa-error aviso-error">{error}</div>}
     </div>
+      </LayoutGroup>
+    </MotionConfig>
   )
 }
 

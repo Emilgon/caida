@@ -1,4 +1,4 @@
-import Carta from '../cartas/Carta.jsx'
+import Carta, { VUELO } from '../cartas/Carta.jsx'
 
 // El conteo de la mesa, hecho a mano como en la mesa de verdad: el repartidor
 // va poniendo las cartas y cantando el número. Empieza por el 1 o por el 4, y
@@ -50,7 +50,15 @@ export default function Reparto({ mesa, direction, revelados, puedoContar, onCon
             aria-label={activa ? `Poner la carta número ${n}` : `Número ${n}`}
           >
             {carta ? (
-              <Carta carta={carta} className="carta-repartida" />
+              // Sale del mazo, que está a la izquierda de la mesa, y se posa
+              // en su hueco. Se ve caer, no aparecer.
+              <Carta
+                carta={carta}
+                vuela
+                initial={{ x: -260 - n * 60, y: -30, rotate: -18, scale: 0.86, opacity: 0 }}
+                animate={{ x: 0, y: 0, rotate: 0, scale: 1, opacity: 1 }}
+                transition={VUELO}
+              />
             ) : (
               <span className="conteo-numero">{n}</span>
             )}

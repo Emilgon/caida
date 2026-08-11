@@ -48,31 +48,28 @@
   outline-offset: 3px;
 }
 
-/* Puedes soltarla ahora mismo. */
-.carta-jugable:hover,
-.carta-jugable:focus-visible {
-  transform: translateY(-16px) scale(1.04);
-  filter: drop-shadow(0 12px 16px rgb(0 0 0 / 0.55));
-}
+/* Ojo: el movimiento (levantar la carta al pasar por encima, el vuelo de la
+   mano a la mesa) lo lleva Motion desde el componente. Aquí solo van cosas
+   que NO son transform, porque Motion escribe transform en el estilo en
+   línea y cualquier transform de CSS se lo comería. */
 
-.carta-seleccionada {
-  transform: translateY(-18px);
-  box-shadow: 0 0 0 3px var(--oro);
+.carta-jugable {
+  filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.5));
 }
 
 /* Se la llevaría la carta que estás mirando. */
 .carta-capturable {
-  animation: carta-late 1.1s ease-in-out infinite;
-  box-shadow: 0 0 0 3px var(--oro), 0 0 20px rgb(224 180 88 / 0.7);
+  box-shadow: 0 0 0 3px var(--oro), 0 0 22px rgb(224 180 88 / 0.75);
+  animation: carta-brilla 1.1s ease-in-out infinite;
 }
 
-@keyframes carta-late {
+@keyframes carta-brilla {
   0%,
   100% {
-    transform: translateY(0) scale(1);
+    box-shadow: 0 0 0 3px var(--oro), 0 0 14px rgb(224 180 88 / 0.5);
   }
   50% {
-    transform: translateY(-6px) scale(1.04);
+    box-shadow: 0 0 0 3px var(--oro), 0 0 30px rgb(224 180 88 / 0.95);
   }
 }
 
@@ -83,82 +80,16 @@
   cursor: default;
 }
 
-/* --- Animaciones de mesa -------------------------------------------------- */
-
-/* Carta que alguien acaba de lanzar: llega desde su lado de la mesa. */
-.carta-recien-jugada {
-  animation: carta-aterriza 0.45s cubic-bezier(0.2, 1.3, 0.45, 1);
-  z-index: 2;
-}
-
-@keyframes carta-aterriza {
-  from {
-    transform: translate(var(--desde-x, 0), var(--desde-y, -70px)) scale(1.18) rotate(var(--giro, -8deg));
-    opacity: 0.15;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-
-/* Carta repartida a la mesa, sale del mazo una por una. */
-.carta-repartida {
-  animation: carta-reparte 0.5s cubic-bezier(0.2, 1.2, 0.4, 1) backwards;
-  animation-delay: var(--retardo, 0s);
-}
-
-@keyframes carta-reparte {
-  from {
-    transform: translateX(var(--desde-mazo, -180px)) rotate(-14deg) scale(0.9);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-
-/* Te acaban de caer encima: rojo, y bien visible. */
+/* La carta que acaba de caer se marca en rojo. El movimiento lo pone Motion;
+   aquí solo el color, que sí se puede animar sin pisarle el transform. */
 .carta-cayendo {
-  animation: carta-caida 0.75s ease-out;
-  box-shadow: 0 0 0 3px var(--rojo), 0 0 26px rgb(214 60 50 / 0.9);
+  box-shadow: 0 0 0 3px var(--rojo), 0 0 30px rgb(214 60 50 / 0.95);
   z-index: 3;
-}
-
-@keyframes carta-caida {
-  0% {
-    transform: scale(1);
-  }
-  22% {
-    transform: scale(1.16) rotate(3deg);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-/* Cartas que se va llevando quien capturó. */
-.carta-capturada {
-  animation: carta-se-va 0.5s ease-in forwards;
-  animation-delay: 0.18s;
-  pointer-events: none;
-}
-
-@keyframes carta-se-va {
-  to {
-    transform: translate(var(--hacia-x, 0), var(--hacia-y, -120px)) scale(0.55) rotate(12deg);
-    opacity: 0;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .carta,
-  .carta-capturable,
-  .carta-recien-jugada,
-  .carta-repartida,
-  .carta-cayendo,
-  .carta-capturada {
+  .carta-capturable {
     animation: none;
     transition: none;
   }

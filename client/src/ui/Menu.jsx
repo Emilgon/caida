@@ -32,6 +32,7 @@ function Portada() {
 }
 
 function Elegir({ etiqueta, valor, opciones, onChange }) {
+  const elegida = opciones.find((opcion) => opcion.valor === valor)
   return (
     <label className="campo">
       {etiqueta}
@@ -48,9 +49,27 @@ function Elegir({ etiqueta, valor, opciones, onChange }) {
           </button>
         ))}
       </div>
+      {/* La explicación de lo elegido, ahí mismo: nadie se va a leer las
+          reglas antes de jugar, pero sí lee dos líneas si están delante. */}
+      {elegida?.explica && <p className="opcion-explica">{elegida.explica}</p>}
     </label>
   )
 }
+
+const MODOS = [
+  {
+    valor: 'tradicional',
+    texto: 'Tradicional',
+    explica:
+      'Todos los cantos suman. Si tú cantas Ronda y otro también, cobran los dos, y tu pareja cobra el suyo aparte. Lo único que te quita un canto es que te lo maten: que el de tu derecha le caiga a la carta con la que cantaste.',
+  },
+  {
+    valor: 'mayor-canto',
+    texto: 'Mayor canto',
+    explica:
+      'De cada reparto de tres cartas cobra un solo canto: el más alto de la mesa, tu pareja incluida. Si tú tienes Vigía (7) y tu pareja Patrulla (6), la pareja anota 7, no 13. Si empatan en puntos, gana el de números más altos; si empatan también en eso y son rivales, se pisan y no cobra nadie.',
+  },
+]
 
 export default function Menu({ acciones, ultima, onVolverAMesa }) {
   const [nombre, setNombre] = useState(nombreGuardado)
@@ -177,19 +196,19 @@ export default function Menu({ acciones, ultima, onVolverAMesa }) {
               valor={meta}
               onChange={setMeta}
               opciones={[
-                { valor: 24, texto: '24 puntos' },
-                { valor: 48, texto: '48 puntos' },
+                {
+                  valor: 24,
+                  texto: '24 puntos',
+                  explica: 'Partida corta: dos o tres manos. A veces se decide en una sola.',
+                },
+                {
+                  valor: 48,
+                  texto: '48 puntos',
+                  explica: 'Partida larga: tres o cuatro manos. Da tiempo a remontar.',
+                },
               ]}
             />
-            <Elegir
-              etiqueta="Modo de cantos"
-              valor={modo}
-              onChange={setModo}
-              opciones={[
-                { valor: 'tradicional', texto: 'Tradicional' },
-                { valor: 'mayor-canto', texto: 'Mayor canto' },
-              ]}
-            />
+            <Elegir etiqueta="Modo de cantos" valor={modo} onChange={setModo} opciones={MODOS} />
             {pantalla === 'bots' && (
               <p className="menu-pista">
                 {jugadores === 4

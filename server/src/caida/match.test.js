@@ -442,7 +442,69 @@ describe("mata canto", () => {
     const canto = applyMove(match, 1, { type: "jugar", card: "oros-5", cantar: true });
     assert.equal(canto.hand.declaredCantos.length, 1);
     assert.equal(canto.hand.pendingCanto, null, "la carta cantada se fue a su monton");
-    assert.equal(canto.scores[1], 1, "cobra la caida del 5");
+    // 1 de la caida del 5, y la ronda se cobra en el acto porque nadie la
+    // puede matar: la carta cantada ya no esta en la mesa.
+    assert.equal(canto.scores[1], 2);
+    assert.equal(canto.hand.declaredCantos[0].paid, true);
+  });
+
+  it("si nadie te mata el canto, los puntos entran en ese mismo turno", () => {
+    const match = scenario({
+      players: 3,
+      turn: 1,
+      hands: [
+        cards("bastos-1", "bastos-2", "bastos-3"),
+        cards("oros-5", "copas-5", "espadas-2"),
+        cards("espadas-7", "oros-10", "copas-4"),
+      ],
+      table: cards("bastos-12"),
+    });
+    const canto = applyMove(match, 1, { type: "jugar", card: "oros-5" });
+    assert.equal(canto.scores[1], 0, "todavia no: falta ver si le caen");
+    assert.equal(canto.hand.declaredCantos[0].paid, undefined);
+
+    // El de la derecha lanza sin caerle: la ronda ya es suya.
+    const salvado = applyMove(canto, 2, { type: "jugar", card: "oros-10" });
+    assert.equal(salvado.scores[1], 1);
+    assert.equal(salvado.hand.declaredCantos[0].paid, true);
+    assert.ok(salvado.log.some((e) => e.type === "canto-cobrado"));
+  });
+
+  it("cantar con la ultima carta de la tanda ya no se puede matar", () => {
+    // Los dos se quedan sin cartas: al repartir se corta la ronda, y con ella
+    // la ventana para matar el canto.
+    const match = scenario({
+      players: 2,
+      turn: 1,
+      hands: [[], cards("oros-5")],
+      table: cards("bastos-12"),
+      deck: cards("oros-1", "oros-2", "oros-3", "copas-1", "copas-2", "copas-3"),
+    });
+    match.hand.canto[1] = { type: "ronda", points: 1, cards: ["oros-5", "copas-5"], rank: [4] };
+
+    const next = applyMove(match, 1, { type: "jugar", card: "oros-5" });
+    assert.equal(next.scores[1], 1, "se reparte de nuevo, asi que el canto es suyo");
+    assert.equal(next.hand.pendingCanto, null);
+  });
+
+  it("al repartir de nuevo no se puede caer sobre la carta que quedo", () => {
+    const match = scenario({
+      players: 2,
+      turn: 1,
+      hands: [[], cards("oros-12")],
+      table: cards("bastos-7"),
+      deck: cards("copas-12", "oros-1", "oros-2", "espadas-12", "copas-2", "copas-3"),
+    });
+    // El 12 se queda en la mesa y se acaban las cartas: toca repartir.
+    const next = applyMove(match, 1, { type: "jugar", card: "oros-12" });
+    assert.equal(next.hand.deals, 2, "hubo reparto");
+    assert.equal(next.hand.lastPlayed, null, "la ronda se corto al repartir");
+
+    // Quien juegue ahora con un 12 recoge, pero NO es caida.
+    const jugadas = legalMoves(next, next.hand.turn);
+    for (const jugada of jugadas) {
+      assert.equal(jugada.caida, false, `${jugada.card} no deberia poder caer`);
+    }
   });
 });
 
