@@ -12,6 +12,8 @@ export const MESA_POINTS = 4; // dejar la mesa vacia al capturar
 export const MAL_ECHADA_POINTS = 1; // consuelo si el repartidor no acerto ninguna
 export const HAND_SIZE = 3;
 export const TABLE_SIZE = 4;
+// Cuantos eventos recientes viajan al cliente en cada estado.
+const EVENT_FEED = 30;
 
 // ---------------------------------------------------------------------------
 // Ayudas puras
@@ -65,10 +67,21 @@ export function resolveCapture(table, card) {
 // Puntuacion
 // ---------------------------------------------------------------------------
 
+/**
+ * Todo evento queda marcado con la mano en la que ocurrio. Importa por una
+ * razon de seguridad: el log es de toda la partida, y una carta nombrada en
+ * la mano 1 puede estar en la mano de otro jugador —o en el mazo— durante la
+ * mano 2. Al cliente solo se le mandan los eventos de la mano en curso, donde
+ * cada carta nombrada ya se vio boca arriba sobre la mesa.
+ */
+function pushLog(match, entry) {
+  match.log.push({ hand: match.handNumber, ...entry });
+}
+
 function addScore(match, team, points, reason, extra = {}) {
   if (points <= 0 || match.winner !== null) return;
   match.scores[team] += points;
-  match.log.push({ type: "puntos", team, points, reason, ...extra });
+  pushLog(match, { type: "puntos", team, points, reason, ...extra });
 }
 
 // La partida se gana en el instante en que un equipo llega a la meta. Si al
@@ -87,7 +100,7 @@ function checkWinner(match) {
 
   match.winner = leaders[0].team;
   match.phase = "terminada";
-  match.log.push({ type: "fin-partida", team: match.winner, score: best });
+  pushLog(match, { type: "fin-partida", team: match.winner, score: best });
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +138,7 @@ export function createMatch({ players, target = 24, mode = "tradicional", seed }
     hand: null,
     lastHand: null,
     winner: null,
-    log: [{ type: "partida-creada", players, target, mode, dealer, seed: resolvedSeed }],
+    log: [{ hand: 0, type: "partida-creada", players, target, mode, dealer, seed: resolvedSeed }],
   };
 }
 
@@ -269,7 +282,7 @@ function dealHand(match, { first, direction }) {
     lastCapturer: null,
     deals: 1,
   };
-  next.log.push({ type: "reparto", hand: next.handNumber, dealer, first, direction });
+  pushLog(next, { type: "reparto", hand: next.handNumber, dealer, first, direction });
 
   // Conteo de la mesa: se van cantando los numeros segun el sentido elegido y
   // cada carta que coincida con su numero le da esos puntos al repartidor.
@@ -284,11 +297,11 @@ function dealHand(match, { first, direction }) {
   });
 
   if (mesaPoints > 0) {
-    next.log.push({ type: "mesa-cantada", seat: dealer, hits, points: mesaPoints });
+    pushLog(next, { type: "mesa-cantada", seat: dealer, hits, points: mesaPoints });
     addScore(next, teamOf(next, dealer), mesaPoints, "mesa-cantada", { seat: dealer });
   } else {
     const consoled = (dealer + 1) % players;
-    next.log.push({ type: "mal-echada", seat: consoled });
+    pushLog(next, { type: "mal-echada", seat: consoled });
     addScore(next, teamOf(next, consoled), MAL_ECHADA_POINTS, "mal-echada", { seat: consoled });
   }
 
@@ -310,7 +323,7 @@ function resolveCantos(match) {
   if (match.mode === "tradicional") {
     for (const canto of alive) {
       const team = teamOf(match, canto.seat);
-      match.log.push({
+      pushLog(match, {
         type: "canto-cobrado",
         team,
         canto: canto.type,
@@ -353,7 +366,7 @@ function resolveCantos(match) {
 
     if (teams.size > 1) {
       // Dos rivales con el mismo canto y del mismo valor se pisan: no suma nadie.
-      match.log.push({
+      pushLog(match, {
         type: "canto-anulado",
         canto: leaders[0].type,
         deal: leaders[0].deal,
@@ -364,7 +377,7 @@ function resolveCantos(match) {
     }
 
     const team = [...teams][0];
-    match.log.push({
+    pushLog(match, {
       type: "canto-cobrado",
       team,
       canto: leaders[0].type,
@@ -388,7 +401,7 @@ function countCards(match) {
   });
 
   for (const entry of detail) {
-    match.log.push({ type: "cartas", ...entry });
+    pushLog(match, { type: "cartas", ...entry });
     addScore(match, entry.team, entry.points, "cartas");
   }
   return detail;
@@ -399,7 +412,7 @@ function closeHand(match) {
 
   // Lo que quede suelto en la mesa se lo lleva quien hizo la ultima captura.
   if (hand.table.length > 0 && hand.lastCapturer !== null) {
-    match.log.push({
+    pushLog(match, {
       type: "ultimas",
       seat: hand.lastCapturer,
       cards: hand.table.map((card) => card.id),
@@ -423,7 +436,7 @@ function closeHand(match) {
     cantos: hand.declaredCantos.map((canto) => ({ ...canto })),
     scores: [...match.scores],
   };
-  match.log.push({ type: "fin-mano", hand: match.handNumber });
+  pushLog(match, { type: "fin-mano", hand: match.handNumber });
 
   if (match.winner === null) {
     match.dealer = (match.dealer + 1) % match.players;
@@ -466,7 +479,7 @@ function playCard(match, seat, plan, declare) {
     if (isCaida) points += caidaPoints(card.value);
     if (mesaLimpia) points += MESA_POINTS;
 
-    next.log.push({
+    pushLog(next, {
       type: isCaida ? "caida" : "recoger",
       seat,
       card: card.id,
@@ -477,7 +490,7 @@ function playCard(match, seat, plan, declare) {
   } else {
     hand.table.push(card);
     hand.lastPlayed = { seat, id: card.id, value: card.value };
-    next.log.push({ type: "lanzar", seat, card: card.id });
+    pushLog(next, { type: "lanzar", seat, card: card.id });
   }
 
   // Mata canto: solo el de la derecha del que canto, cayendole a esa misma carta.
@@ -485,7 +498,7 @@ function playCard(match, seat, plan, declare) {
     const victim = hand.declaredCantos.find((canto) => canto.id === pending.id);
     victim.killed = true;
     victim.killedBy = seat;
-    next.log.push({ type: "mata-canto", seat, victim: pending.seat, canto: victim.type });
+    pushLog(next, { type: "mata-canto", seat, victim: pending.seat, canto: victim.type });
   }
 
   if (declare) {
@@ -501,7 +514,7 @@ function playCard(match, seat, plan, declare) {
     };
     hand.declaredCantos.push(entry);
     hand.declared[seat] = true;
-    next.log.push({ type: "canto", seat, canto: canto.type, points: canto.points });
+    pushLog(next, { type: "canto", seat, canto: canto.type, points: canto.points });
 
     // Solo es matable si la carta cantada quedo en la mesa. Si cantaste
     // haciendo caida, la carta se fue a tu monton y nadie te la puede matar.
@@ -520,7 +533,7 @@ function playCard(match, seat, plan, declare) {
   if (hand.hands.every((cards) => cards.length === 0)) {
     if (hand.deck.length > 0) {
       dealThree(next);
-      next.log.push({ type: "reparto-parcial", hand: next.handNumber, deals: hand.deals });
+      pushLog(next, { type: "reparto-parcial", hand: next.handNumber, deals: hand.deals });
     } else {
       return closeHand(next);
     }
@@ -599,6 +612,10 @@ export function publicStateFor(match, seat) {
     lastHand: match.lastHand,
     legalMoves: legalMoves(match, seat),
     hand: null,
+    // Lo ultimo que paso, para que la interfaz pueda animarlo y narrarlo.
+    // SOLO de la mano en curso: ver el comentario de `pushLog`.
+    events: match.log.filter((entry) => entry.hand === match.handNumber).slice(-EVENT_FEED),
+    eventCount: match.log.length,
   };
 
   const hand = match.hand;

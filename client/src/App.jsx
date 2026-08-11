@@ -1,22 +1,67 @@
-// Esqueleto del proyecto (Fase 0): solo confirma que el pipeline completo
-// (React + Vite, deploy) funciona. El juego de verdad llega en las fases
-// siguientes — primero el motor de reglas puro (sin esto), después las
-// salas por socket, y al final esta pantalla se vuelve el menú real.
+import { useEffect, useState } from 'react'
+
+import Menu from './ui/Menu.jsx'
+import Sala from './ui/Sala.jsx'
+import Mesa from './ui/Mesa.jsx'
+import { olvidarMesa, tokenGuardado, ultimaMesa, useSala } from './net/useSala.js'
+import { sonido } from './sonido.js'
 
 export default function App() {
-  return (
-    <main
-      style={{
-        minHeight: '100svh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#f5f1ec',
-        background: '#12100e',
-        fontFamily: 'system-ui, sans-serif',
-      }}
-    >
-      <h1>Caída — en construcción</h1>
-    </main>
-  )
+  const { conectado, estado, cerrada, acciones, reiniciar } = useSala()
+  const [mesaGuardada, setMesaGuardada] = useState(ultimaMesa)
+  const [aviso, setAviso] = useState(null)
+
+  // La mesa se disolvió mientras estabas dentro.
+  useEffect(() => {
+    if (!cerrada) return
+    olvidarMesa(cerrada.code)
+    setMesaGuardada(null)
+    setAviso('La mesa se canceló.')
+    reiniciar()
+  }, [cerrada, reiniciar])
+
+  async function salir() {
+    const code = estado?.room?.code
+    await acciones.salir()
+    if (code) olvidarMesa(code)
+    setMesaGuardada(null)
+    reiniciar()
+  }
+
+  // Volver a una mesa de la que te saliste por recargar o cerrar la pestaña.
+  async function retomar() {
+    if (!mesaGuardada || !tokenGuardado(mesaGuardada)) return
+    const r = await acciones.entrar({ code: mesaGuardada, nombre: '' })
+    if (!r.ok) {
+      sonido.error()
+      setAviso(r.error.message)
+      olvidarMesa(mesaGuardada)
+      setMesaGuardada(null)
+    }
+  }
+
+  if (!conectado && !estado) {
+    return (
+      <div className="mesa-cargando">
+        <p>Conectando con el servidor…</p>
+      </div>
+    )
+  }
+
+  if (!estado) {
+    return (
+      <>
+        {aviso && <div className="mesa-error aviso-error">{aviso}</div>}
+        <Menu acciones={acciones} ultima={mesaGuardada} onVolverAMesa={retomar} />
+      </>
+    )
+  }
+
+  const { room, game } = estado
+
+  if (room.phase === 'sala') {
+    return <Sala sala={room} acciones={acciones} onSalir={salir} />
+  }
+
+  return <Mesa room={room} game={game} acciones={acciones} onSalir={salir} />
 }

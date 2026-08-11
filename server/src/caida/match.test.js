@@ -825,6 +825,29 @@ describe("publicStateFor", () => {
     }
   });
 
+  it("manda los ultimos eventos, y ninguno lleva una carta oculta", () => {
+    let match = dealt({ players: 4, seed: "eventos" });
+    for (let i = 0; i < 8 && match.winner === null; i += 1) {
+      const seat = match.hand.turn;
+      match = applyMove(match, seat, legalMoves(match, seat)[0]);
+    }
+
+    for (let seat = 0; seat < 4; seat += 1) {
+      const view = publicStateFor(match, seat);
+      assert.ok(view.events.length > 0);
+      assert.equal(view.eventCount, match.log.length);
+
+      const serialized = JSON.stringify(view.events);
+      const ocultas = match.hand.hands
+        .filter((_, other) => other !== seat)
+        .flat()
+        .concat(match.hand.deck);
+      for (const card of ocultas) {
+        assert.ok(!serialized.includes(JSON.stringify(card.id)), `el log filtro ${card.id}`);
+      }
+    }
+  });
+
   it("avisa si todavia queda carta con la que declarar el canto", () => {
     const match = scenario({
       turn: 1,

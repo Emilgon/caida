@@ -3,8 +3,8 @@
 Plataforma web para jugar Caída (juego de cartas venezolano) en tiempo real
 con personas reales, 2, 3 o 4 jugadores.
 
-**Estado:** Fases 1 y 2 listas. El motor de reglas y las salas por socket
-están completos y probados; falta la interfaz (Fase 3).
+**Estado:** jugable. Motor, salas, bots e interfaz. Se puede jugar contra
+Odaa, Key y Toby, o con gente por código de mesa.
 
 ## Estructura
 
@@ -14,7 +14,10 @@ están completos y probados; falta la interfaz (Fase 3).
     Ver [REGLAS.md](REGLAS.md).
   - `src/rooms/` — salas: quién está sentado dónde, reconexión, y el puente
     con los sockets.
+  - `src/bots/` — Odaa, Key y Toby.
 - `client/` — React + Vite.
+  - `src/cartas/` — la baraja española dibujada en SVG.
+  - `src/ui/` — menú, sala y tablero.
 
 ## El motor
 
@@ -83,11 +86,26 @@ Las salas viven en memoria. Si el servidor se reinicia — en Render free se
 duerme por inactividad — las partidas en curso se pierden. Asumido para el
 v1; persistirlas es meter una base de datos.
 
+## Los bots
+
+Odaa, Key y Toby. El líder los sienta y los quita antes de empezar, así que
+se arma yo contra 1, contra 2, o contra 3 con parejas.
+
+Deciden con la **misma vista que recibe una persona**: no ven las cartas de
+nadie ni el mazo. Es a propósito. Un bot que espía juega de una forma que no
+se puede reproducir jugando, y entonces sus errores no sirven para encontrar
+fallos en el juego.
+
+Prefieren caer antes que lanzar, se llevan la jugada que más cartas arrastra
+y matan el canto cuando pueden. Si no capturan, sueltan la carta chica y
+guardan la grande. Cantan cuando lo hacen capturando —así nadie se lo mata—
+y si van a lanzar, esperan a la última carta del canto.
+
 ## Tests
 
 ```bash
-cd server
-npm test
+cd server && npm test    # motor, salas, bots, end to end por sockets
+cd client && npm test    # las pantallas, dibujadas contra partidas reales
 ```
 
 - **Reglas**: cada regla de [REGLAS.md](REGLAS.md) por separado.
@@ -98,6 +116,9 @@ npm test
 - **End to end**: servidor Socket.IO real y clientes reales por TCP jugando
   una partida completa de 4, contrastando en cada jugada lo que recibió cada
   cliente contra el estado verdadero del servidor.
+- **Pantallas**: menú, sala y tablero dibujados contra partidas de verdad
+  salidas del motor, incluida la comprobación de que el tablero nunca pinta
+  una carta que no deberías estar viendo.
 
 ## Correr en local
 
@@ -111,7 +132,9 @@ npm install
 npm run dev
 ```
 
-**Cliente** (puerto elegido por Vite, normalmente 5173 o el siguiente libre):
+**Cliente** (puerto **5174**, fijo a propósito: es el que el servidor permite
+por CORS por defecto. Si está ocupado, Vite falla en vez de moverse solo, que
+es lo que hacía que el socket quedara rechazado sin explicación):
 
 ```bash
 cd client

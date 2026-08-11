@@ -1,0 +1,616 @@
+/* El tablero. Pensado para monitor: la mesa ocupa el alto disponible y las
+   cartas crecen con la pantalla. En celular se reordena a una columna y las
+   cartas encogen, sin que haya que hacer scroll en plena jugada. */
+
+.mesa {
+  --carta-alto: clamp(74px, 9.5vh, 118px);
+  height: 100svh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgb(46 130 88 / 0.65), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 50%, var(--pano) 0%, var(--pano-hondo) 75%);
+  overflow: hidden;
+}
+
+/* --- Barra de arriba ----------------------------------------------------- */
+
+.mesa-barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.9rem;
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.15));
+  border-bottom: 1px solid rgb(224 180 88 / 0.2);
+}
+
+.mesa-codigo {
+  font-family: var(--fuente-titulo);
+  font-size: 1rem;
+  letter-spacing: 0.2em;
+  color: rgb(224 180 88 / 0.75);
+}
+
+.mesa-barra-botones {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* --- Marcador ------------------------------------------------------------ */
+
+.marcador {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.marcador-meta {
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(246 239 221 / 0.45);
+}
+
+.marcador-equipo {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.28rem 0.75rem;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.35);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgb(224 180 88 / 0.18);
+}
+
+/* Barra de progreso hacia la meta, por detrás del texto. */
+.marcador-equipo::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--barra);
+  background: rgb(224 180 88 / 0.16);
+  transition: width 0.5s ease;
+}
+
+.marcador-tuyo {
+  box-shadow: inset 0 0 0 1.5px var(--oro);
+}
+
+.marcador-nombres {
+  position: relative;
+  font-size: 0.82rem;
+  color: rgb(246 239 221 / 0.8);
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marcador-puntos {
+  position: relative;
+  font-family: var(--fuente-titulo);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--oro);
+}
+
+/* --- Paño ---------------------------------------------------------------- */
+
+.mesa-pano {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 12rem) 1fr minmax(0, 12rem);
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    '. arriba .'
+    'izquierda centro derecha';
+  align-items: center;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem;
+  min-height: 0;
+}
+
+.jugador-arriba {
+  grid-area: arriba;
+}
+.jugador-izquierda {
+  grid-area: izquierda;
+}
+.jugador-derecha {
+  grid-area: derecha;
+}
+
+.mesa-centro {
+  grid-area: centro;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.8rem, 3vw, 2.5rem);
+  min-height: 0;
+}
+
+.mesa-mazo {
+  position: relative;
+  width: calc(var(--carta-alto) * 0.645);
+  height: var(--carta-alto);
+  flex: 0 0 auto;
+}
+
+.mesa-mazo-carta {
+  position: absolute;
+  inset: 0;
+  transform: translate(calc(var(--i) * 2px), calc(var(--i) * -2px));
+}
+
+.mesa-mazo-cuenta {
+  position: absolute;
+  inset: auto 0 -1.5rem 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgb(246 239 221 / 0.5);
+}
+
+.mesa-cartas {
+  display: flex;
+  gap: clamp(0.3rem, 1vw, 0.7rem);
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  min-height: var(--carta-alto);
+  padding: 0.6rem;
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 2px rgb(224 180 88 / 0.12);
+}
+
+.mesa-vacia {
+  font-family: var(--fuente-titulo);
+  font-style: italic;
+  color: rgb(246 239 221 / 0.35);
+  padding: 0 2rem;
+}
+
+/* --- Banner de jugador --------------------------------------------------- */
+
+.jugador {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 0.32);
+  box-shadow: inset 0 0 0 1px rgb(224 180 88 / 0.15);
+  max-width: 100%;
+  transition: box-shadow 0.25s ease, background 0.25s ease;
+}
+
+.jugador-turno {
+  background: rgb(224 180 88 / 0.16);
+  box-shadow:
+    inset 0 0 0 2px var(--oro),
+    0 0 22px rgb(224 180 88 / 0.35);
+  animation: jugador-latido 1.8s ease-in-out infinite;
+}
+
+@keyframes jugador-latido {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 2px var(--oro), 0 0 16px rgb(224 180 88 / 0.25);
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px var(--oro), 0 0 30px rgb(224 180 88 / 0.5);
+  }
+}
+
+.jugador-caido {
+  opacity: 0.55;
+}
+
+.jugador-ficha {
+  position: relative;
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, var(--madera-clara), var(--madera));
+  box-shadow: inset 0 0 0 2px rgb(224 180 88 / 0.45);
+}
+
+.jugador-inicial {
+  font-family: var(--fuente-titulo);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--oro);
+}
+
+.jugador-reparte {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  background: var(--crema);
+  color: var(--tinta);
+}
+
+.jugador-datos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.jugador-nombre {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--fuente-titulo);
+  font-size: 0.98rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jugador-cuentas {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.76rem;
+  color: rgb(246 239 221 / 0.6);
+}
+
+.jugador-aviso {
+  font-size: 0.72rem;
+  color: #f0a8a3;
+}
+
+.jugador-cantos,
+.resumen-cantos {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.canto-chip {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  padding: 0.1rem 0.4rem;
+  border-radius: 99px;
+  background: rgb(224 180 88 / 0.22);
+  color: var(--oro);
+}
+
+.canto-muerto {
+  background: rgb(184 51 44 / 0.25);
+  color: #f0a8a3;
+  text-decoration: line-through;
+}
+
+/* Abanico de dorsos de los rivales. */
+.jugador-mano {
+  --carta-alto: 34px;
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.jugador-dorso {
+  margin-left: -14px;
+  transform: rotate(calc((var(--i) - 1) * 5deg));
+}
+
+.jugador-dorso:first-child {
+  margin-left: 0;
+}
+
+/* --- Avisos flotantes ---------------------------------------------------- */
+
+.mesa-avisos {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: center;
+  pointer-events: none;
+  z-index: 5;
+  width: max-content;
+  max-width: 92%;
+}
+
+.aviso {
+  padding: 0.4rem 0.95rem;
+  border-radius: 99px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  background: rgb(0 0 0 / 0.7);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.4);
+  animation: aviso-entra 0.28s ease-out;
+  text-align: center;
+}
+
+.aviso-fuerte {
+  background: var(--oro);
+  color: #2a1c06;
+  font-family: var(--fuente-titulo);
+  font-size: 1.15rem;
+  animation: aviso-golpe 0.4s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+
+.aviso-canto {
+  background: linear-gradient(100deg, #7b4bb5, #b5539e);
+  color: #fff;
+  font-family: var(--fuente-titulo);
+  font-size: 1.05rem;
+}
+
+.aviso-bueno {
+  background: rgb(111 191 115 / 0.92);
+  color: #10250f;
+}
+
+.aviso-malo {
+  background: rgb(184 51 44 / 0.92);
+  color: #fff;
+}
+
+@keyframes aviso-entra {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes aviso-golpe {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* --- Pausa --------------------------------------------------------------- */
+
+.mesa-pausa {
+  position: absolute;
+  inset: auto 0 1rem 0;
+  margin: 0 auto;
+  width: max-content;
+  max-width: 90%;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.6rem 1rem;
+  border-radius: 12px;
+  background: rgb(184 51 44 / 0.85);
+  box-shadow: var(--sombra-media);
+  z-index: 6;
+}
+
+.mesa-pausa p {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* --- Mi zona ------------------------------------------------------------- */
+
+.mesa-abajo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.8rem 0.9rem;
+  background: linear-gradient(0deg, rgb(0 0 0 / 0.45), transparent);
+}
+
+.mi-mano {
+  display: flex;
+  gap: clamp(0.35rem, 1.2vw, 0.9rem);
+  align-items: flex-end;
+  min-height: calc(var(--carta-alto) + 14px);
+  padding-top: 14px;
+}
+
+.mi-mano .carta {
+  --carta-alto: clamp(92px, 13vh, 150px);
+}
+
+.mi-canto {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--oro);
+}
+
+/* --- Capas y paneles ----------------------------------------------------- */
+
+.capa {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(6 20 14 / 0.72);
+  backdrop-filter: blur(3px);
+  z-index: 20;
+  animation: aviso-entra 0.2s ease-out;
+}
+
+.panel-pila {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  width: min(30rem, 100%);
+  max-height: 92svh;
+  overflow-y: auto;
+}
+
+.panel {
+  width: min(30rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.3rem;
+  border-radius: var(--radio);
+  background: linear-gradient(180deg, #16412e, #0f3123);
+  box-shadow: var(--sombra-alta), inset 0 0 0 1px rgb(224 180 88 / 0.25);
+}
+
+.panel h3 {
+  font-size: 1.4rem;
+  color: var(--oro);
+}
+
+.panel-pista {
+  margin: 0;
+  font-size: 0.86rem;
+  color: rgb(246 239 221 / 0.65);
+}
+
+.panel-botones {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.panel-botones .boton {
+  flex: 1 1 9rem;
+}
+
+.panel-marcador {
+  margin: 0;
+  font-family: var(--fuente-titulo);
+  font-size: 2.6rem;
+  font-weight: 700;
+  color: var(--crema);
+  text-align: center;
+}
+
+.resumen-lista {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.resumen-lista li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgb(224 180 88 / 0.15);
+}
+
+.resumen-detalle {
+  color: rgb(246 239 221 / 0.6);
+  white-space: nowrap;
+}
+
+.resumen-detalle strong {
+  color: var(--oro);
+}
+
+.mesa-error {
+  position: fixed;
+  left: 50%;
+  bottom: 1.2rem;
+  transform: translateX(-50%);
+  z-index: 30;
+}
+
+.mesa-cargando {
+  --carta-alto: 90px;
+  height: 100svh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1rem;
+  background: var(--pano-hondo);
+}
+
+/* --- Celular ------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .mesa {
+    --carta-alto: clamp(58px, 8vh, 84px);
+  }
+
+  .mesa-pano {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      'arriba'
+      'lados'
+      'centro';
+    gap: 0.35rem;
+    padding: 0.4rem;
+  }
+
+  .jugador-izquierda,
+  .jugador-derecha {
+    grid-area: lados;
+    justify-self: stretch;
+  }
+
+  /* Con 3 y 4 jugadores los dos laterales comparten fila. */
+  .mesa-3 .jugador-izquierda,
+  .mesa-4 .jugador-izquierda {
+    justify-self: start;
+  }
+
+  .mesa-3 .jugador-derecha,
+  .mesa-4 .jugador-derecha {
+    justify-self: end;
+    margin-top: -3.2rem;
+  }
+
+  .mesa-centro {
+    flex-direction: column-reverse;
+    gap: 0.4rem;
+  }
+
+  .mesa-mazo {
+    transform: scale(0.75);
+  }
+
+  .jugador-mano {
+    display: none;
+  }
+
+  .mi-mano .carta {
+    --carta-alto: clamp(84px, 17vh, 120px);
+  }
+
+  .marcador-nombres {
+    max-width: 6rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jugador-turno,
+  .aviso,
+  .aviso-fuerte,
+  .capa {
+    animation: none;
+  }
+}

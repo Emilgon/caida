@@ -1,0 +1,269 @@
+.sala {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem 1rem;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 0%, rgb(46 122 84 / 0.5), transparent 70%),
+    var(--pano-hondo);
+}
+
+.sala-caja {
+  width: min(46rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 1.6rem;
+  border-radius: var(--radio);
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.3), rgb(0 0 0 / 0.45));
+  box-shadow: var(--sombra-alta), inset 0 0 0 1px rgb(224 180 88 / 0.18);
+}
+
+.sala-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sala-cabecera h2 {
+  font-size: 1.5rem;
+  color: var(--oro);
+}
+
+.sala-reglas {
+  margin: 0.2rem 0 0;
+  font-size: 0.9rem;
+  color: rgb(246 239 221 / 0.6);
+}
+
+.sala-codigo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+}
+
+.sala-codigo-etiqueta,
+.sala-codigo-pista {
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(246 239 221 / 0.5);
+}
+
+.sala-codigo-valor {
+  font-family: var(--fuente-titulo);
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--oro);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.sala-codigo-valor:hover {
+  filter: brightness(1.15);
+}
+
+.sala-pista {
+  margin: 0;
+  font-size: 0.88rem;
+  color: rgb(246 239 221 / 0.62);
+}
+
+/* --- Asientos ----------------------------------------------------------- */
+
+.sala-asientos {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.sala-asientos-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.asiento {
+  position: relative;
+  min-height: 6.5rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 0.28);
+  border: 2px solid rgb(224 180 88 / 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.asiento[draggable='true'] {
+  cursor: grab;
+}
+
+.asiento-arrastrando {
+  opacity: 0.45;
+  transform: scale(0.97);
+}
+
+.asiento-vacio {
+  border-style: dashed;
+  place-content: center;
+  text-align: center;
+}
+
+.asiento-tuyo {
+  border-color: var(--oro);
+  background: rgb(224 180 88 / 0.12);
+}
+
+/* Un filete de color a la izquierda dice de qué pareja es el asiento. */
+.asiento-pareja-0::before,
+.asiento-pareja-1::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12%;
+  bottom: 12%;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+}
+
+.asiento-pareja-0::before {
+  background: var(--verde-vivo);
+}
+
+.asiento-pareja-1::before {
+  background: #d98b3a;
+}
+
+.asiento-numero {
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(246 239 221 / 0.45);
+}
+
+.asiento-nombre {
+  font-family: var(--fuente-titulo);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.asiento-nombre em {
+  font-style: normal;
+  font-size: 0.8rem;
+  color: var(--oro);
+}
+
+.asiento-libre {
+  color: rgb(246 239 221 / 0.4);
+  font-style: italic;
+}
+
+.asiento-etiquetas {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.etiqueta {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 99px;
+}
+
+.etiqueta-lider {
+  background: var(--oro);
+  color: #2a1c06;
+}
+
+.etiqueta-bot {
+  background: rgb(111 191 115 / 0.25);
+  color: var(--verde-vivo);
+  box-shadow: inset 0 0 0 1px rgb(111 191 115 / 0.5);
+}
+
+.etiqueta-caido {
+  background: rgb(184 51 44 / 0.3);
+  color: #f0a8a3;
+  box-shadow: inset 0 0 0 1px rgb(184 51 44 / 0.6);
+}
+
+.asiento-quitar {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.asiento-agarre {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  width: 14px;
+  height: 10px;
+  background:
+    radial-gradient(circle, rgb(246 239 221 / 0.45) 1px, transparent 1.2px) 0 0 / 5px 5px;
+  pointer-events: none;
+}
+
+/* --- Controles ---------------------------------------------------------- */
+
+.sala-controles {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.sala-controles .boton {
+  flex: 1 1 10rem;
+}
+
+.sala-esperando {
+  --carta-alto: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.sala-dorso {
+  animation: sala-vaiven 2.4s ease-in-out infinite;
+}
+
+@keyframes sala-vaiven {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+
+.sala-salir {
+  align-self: flex-start;
+}
+
+@media (max-width: 560px) {
+  .sala-asientos,
+  .sala-asientos-3 {
+    grid-template-columns: 1fr;
+  }
+  .sala-cabecera {
+    flex-direction: column;
+  }
+  .sala-codigo {
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sala-dorso {
+    animation: none;
+  }
+}

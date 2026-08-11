@@ -1,16 +1,182 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+/* Paño verde, madera y dorado: una mesa de cartas, no un panel de control. */
 
-html {
+:root {
+  --fuente-titulo: 'Georgia', 'Iowan Old Style', 'Times New Roman', serif;
+  --fuente-texto: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --pano: #1c5c3f;
+  --pano-oscuro: #164a33;
+  --pano-hondo: #0f3626;
+  --madera: #46281a;
+  --madera-clara: #6b3f26;
+  --oro: #e0b458;
+  --oro-hondo: #9d7423;
+  --crema: #f6efdd;
+  --tinta: #241a13;
+  --rojo: #b8332c;
+  --verde-vivo: #6fbf73;
+
+  --sombra-alta: 0 18px 40px rgb(0 0 0 / 0.45);
+  --sombra-media: 0 8px 18px rgb(0 0 0 / 0.35);
+  --radio: 14px;
+
   color-scheme: dark;
 }
 
-body {
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
   margin: 0;
-  min-height: 100svh;
+}
+
+body {
+  font-family: var(--fuente-texto);
+  color: var(--crema);
+  background: #0d2419;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--fuente-titulo);
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* --- Botones ------------------------------------------------------------ */
+
+.boton {
+  --fondo: var(--oro);
+  --texto: #2a1c06;
+  border: 0;
+  border-radius: 10px;
+  padding: 0.72rem 1.35rem;
+  font-weight: 700;
+  font-size: 1rem;
+  background: var(--fondo);
+  color: var(--texto);
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgb(0 0 0 / 0.3);
+  transition: transform 0.1s ease, filter 0.15s ease;
+}
+
+.boton:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.boton:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.3);
+}
+
+.boton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.boton-fantasma {
+  --fondo: transparent;
+  --texto: var(--crema);
+  box-shadow: inset 0 0 0 2px rgb(224 180 88 / 0.5);
+}
+
+.boton-peligro {
+  --fondo: var(--rojo);
+  --texto: #fff;
+}
+
+.boton-chico {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+/* --- Campos ------------------------------------------------------------- */
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgb(246 239 221 / 0.65);
+}
+
+.campo input {
+  font-family: inherit;
+  font-size: 1.05rem;
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  border: 2px solid rgb(224 180 88 / 0.35);
+  background: rgb(0 0 0 / 0.28);
+  color: var(--crema);
+}
+
+.campo input:focus {
+  outline: none;
+  border-color: var(--oro);
+}
+
+.opciones {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.opcion {
+  flex: 1 1 auto;
+  min-width: 4.5rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 10px;
+  border: 2px solid rgb(224 180 88 / 0.3);
+  background: rgb(0 0 0 / 0.25);
+  color: var(--crema);
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.opcion:hover {
+  border-color: rgb(224 180 88 / 0.7);
+}
+
+.opcion[aria-pressed='true'] {
+  background: var(--oro);
+  border-color: var(--oro);
+  color: #2a1c06;
+}
+
+/* --- Utilidades --------------------------------------------------------- */
+
+.aviso-error {
+  background: rgb(184 51 44 / 0.9);
+  color: #fff;
+  padding: 0.7rem 1rem;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.sr-solo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
