@@ -17,6 +17,12 @@ corregida y completada por Emilio.
 
 ## Reparto de una mano
 
+Una **mano** es el mazo completo: las 40 cartas se juegan antes de contar.
+Se reparte en **tandas** de 3 cartas por jugador; cuando todos agotan sus 3,
+se reparten 3 nuevas del mismo mazo, sin volver a poner cartas en la mesa.
+Son 6 tandas con 2 jugadores, 4 con 3 y 3 con 4 (36 cartas repartidas + 4 de
+mesa = 40, que es lo que hace cuadrar los umbrales del final).
+
 1. El primer repartidor de la partida se decide al azar (botón de barajar).
    En las manos siguientes, el reparto rota al siguiente jugador.
 2. Quien reparte elige, antes de repartir:
@@ -27,16 +33,21 @@ corregida y completada por Emilio.
 4. Reparte 4 cartas a la mesa, una por una, contando el número que
    corresponda según el sentido elegido. **Si el valor de la carta coincide
    con el número dicho en esa posición**, quien reparte (o su pareja) se
-   anota los puntos de esa posición (1 a 4). Si no acierta ninguna de las 4,
-   es "mal echada": el primer jugador en jugar se anota 1 punto de consuelo.
+   anota los puntos de esa posición (1 a 4). Si acierta en varias posiciones,
+   se suman todas. Si no acierta ninguna de las 4, es "mal echada": el primer
+   jugador en jugar se anota 1 punto de consuelo.
 5. Las 4 cartas de mesa **nunca tienen valores repetidos entre sí** (se
    garantiza al repartir, sin simular el redibujo del mazo físico).
 
 ## Cantos
 
-Se detectan en la mano de 3 cartas de cada jugador, pero **se declaran turno
-a turno**, en el momento de jugar o hacer caída con la carta que forma parte
-del canto — no todos de una vez al ver la mano.
+Se detectan en las 3 cartas que tiene el jugador **en la tanda actual** (se
+vuelven a mirar en cada tanda nueva), pero **se declaran turno a turno**, en
+el momento de jugar o hacer caída con la carta que forma parte del canto — no
+todos de una vez al ver la mano.
+
+Una mano de 3 cartas forma como máximo **un** canto: si encaja en varios
+(1,12,12 es a la vez Casa Grande y Ronda de 12), vale el de más puntos.
 
 | Canto | Composición | Puntos |
 |---|---|---|
@@ -54,23 +65,47 @@ quien cantó (el turno siguiente, nadie más adelante) puede matárselo,
 haciendo caída sobre esa misma carta. El canto se anula del todo, y quien
 mató se anota los puntos de la CAÍDA (tabla de abajo), no los del canto.
 
-**Modo Tradicional**: cada canto vale su tabla propia, independiente de los
-demás, salvo que lo maten. Si dos jugadores cantan el mismo tipo (típico:
-Ronda) y a ninguno lo matan, solo se anota el de mayor valor.
+Los cantos compiten **dentro de la misma tanda**, que es cuando todos tienen
+mano comparable. Una Ronda de la tanda 1 no se enfrenta a otra de la tanda 4.
 
-**Modo Mayor Canto**: en toda la mano solo cuenta el canto más alto que
-haya, de cualquier tipo (comparando por su valor en la tabla). El mata canto
-sigue existiendo igual. Se resuelve al cerrar la mano, cuando ya se
-declararon todos los cantos posibles.
+**Modo Tradicional**: cada canto vale su tabla propia, independiente de los
+demás, salvo que lo maten. Si dos jugadores cantan el mismo tipo en la misma
+tanda (típico: Ronda) y a ninguno lo matan, solo se anota el de mayor valor.
+
+**Modo Mayor Canto**: dentro de cada tanda solo cuenta el canto más alto que
+haya en la mesa, de cualquier tipo (comparando por su valor en la tabla) y de
+cualquier jugador, **tu pareja incluida**: si tú tienes Vigía (7) y tu pareja
+Patrulla (6), la pareja anota 7, no 13. Los cantos matados se descartan antes
+de comparar, así que si a ti te matan la Vigía cobra la Patrulla de tu
+pareja — siempre que ningún contrincante tenga uno más alto. El mata canto
+sigue existiendo igual.
+
+**Empates**: si el canto ganador está empatado en puntos entre rivales, se
+pisan y no anota ninguno. Si el empate es entre los dos de una misma pareja,
+la pareja lo cobra una sola vez.
+
+Todo esto se resuelve **al cerrar la mano**, cuando ya se declararon todos
+los cantos posibles. Declarar no da puntos en el momento.
 
 ## Turno de juego
 
 Empieza el jugador a la derecha de quien repartió, sentido antihorario
-(igual que el dominó). En tu turno:
+(igual que el dominó). En tu turno juegas una carta. Si esa carta coincide en
+valor con alguna de la mesa, **captura**; si no, se queda en la mesa.
 
-- Si tienes una carta del mismo valor que alguna en la mesa, puedes hacer
-  **caída**: te llevas TODAS las cartas de la mesa de ese valor (no solo
-  una) más la que jugaste. Sumas los puntos de caída:
+### Capturar
+
+Al capturar te llevas **todas** las cartas de la mesa de ese valor (no solo
+una) más la que jugaste, y sigues arrastrando en **escalera** hacia arriba
+mientras la mesa tenga el valor siguiente: capturas el 1, y si hay 2 te lo
+llevas, y si hay 3 también, hasta que falte el siguiente. Como no hay 8 ni 9,
+después del 7 viene el 10 (una escalera puede ser 6,7,10,11,12). La escalera
+es **obligatoria**: no se puede cortar antes para no limpiar la mesa.
+
+Hay dos formas de capturar, y solo una da puntos por el valor:
+
+- **Caída**: capturar con el mismo valor de la carta que **acaba de lanzar el
+  jugador anterior**. Le "caes" encima. Suma:
 
   | Valor | Puntos |
   |---|---|
@@ -79,16 +114,23 @@ Empieza el jugador a la derecha de quien repartió, sentido antihorario
   | 11 | 3 |
   | 12 | 4 |
 
-  - Si la caída deja la mesa vacía del todo: **caída con mesa**, 5 puntos.
-- Si no, lanzas una carta cualquiera a la mesa (declarando el canto si esa
-  carta pertenece a uno tuyo).
-- Si al recoger (sin ser caída) la mesa queda vacía: **mesa limpia**, 4
-  puntos.
+- **Recoger**: capturar cualquier otra carta que ya estaba en la mesa. No
+  suma puntos de valor, solo te llevas las cartas (que cuentan al final).
+
+El primero en jugar de la mano nunca puede hacer caída: las 4 cartas de mesa
+no las lanzó nadie. Y después de una captura tampoco queda carta viva, así
+que el siguiente solo puede recoger o lanzar.
+
+### Mesa
+
+Si la captura deja la mesa **vacía del todo**, son 4 puntos más, se llame
+caída o recoger. Los puntos se **suman**: recoger limpiando la mesa son 4;
+caer con un 12 y limpiar la mesa son 4 + 4 = 8.
 
 ## Fin de la mano
 
-Cuando todos agotan su mano de 3 cartas, quien hizo la última captura se
-lleva lo que quede suelto en la mesa. Cada jugador (o pareja, en 4p) cuenta
+Cuando se acaba el mazo y todos agotan sus cartas, quien hizo la última
+captura se lleva lo que quede suelto en la mesa. Cada jugador (o pareja, en 4p) cuenta
 sus cartas capturadas contra un umbral parejo según el número de jugadores;
 lo que exceda son puntos extra (1 por carta):
 
@@ -104,20 +146,25 @@ El "trivilín de tres 12" (gana la partida entera de un golpe) y el
 "zapatero" (pagar doble si terminas en 0, viene de apuestas con dinero real)
 no están implementados. Se agregan después si se extrañan jugando.
 
-## Sin confirmar todavía (NO asumir, preguntarle a Emilio)
+## Decisiones cerradas en la Fase 1
 
-Estas tres quedaron abiertas en la planeación — a diferencia del resto de
-este documento, todavía no tienen una respuesta de Emilio. El motor debe
-tomar una decisión explícita y documentada para poder avanzar, pero hay que
-marcarla como "supuesto, a confirmar jugando" en el código, no darla por
-definitiva:
+Las dudas que quedaron abiertas en la planeación, ya resueltas con Emilio y
+cubiertas por tests:
 
-1. **Caída con mesa**: cuando dice "5 puntos", ¿son 5 puntos FIJOS en vez de
-   los de la caída normal, o son los puntos de la caída MÁS 5 extra por
-   dejar la mesa vacía?
-2. **Composición de Patrulla**: la escalera de 3 consecutivas, ¿tiene que
-   ser del mismo palo, o cualquier palo vale?
-3. **Una carta que pertenece a más de un canto a la vez** (ej: parte de una
-   Ronda y también de una Patrulla en la misma mano de 3 cartas): ¿el
-   jugador elige cuál de los dos declarar al jugarla, o se declaran los dos
-   si la carta encaja en ambos?
+1. **Caída con mesa**: es aditivo. Los puntos de la caída MÁS 4 por dejar la
+   mesa vacía. La cifra "5" del original es el caso común (caída de 1 a 7).
+2. **Patrulla**: cualquier palo. Del mismo palo sería tan raro que el canto
+   quedaría muerto frente al Registro, que vale más.
+3. **Una carta en dos cantos a la vez**: no puede pasar. Con 3 cartas nunca
+   se forman dos cantos distintos — Ronda y Vigía exigen par, Patrulla exige
+   tres valores distintos, y las manos con nombre propio (Registro, Casa
+   Chica…) son composiciones exactas. Cuando una mano encaja en dos
+   definiciones (1,12,12 es Casa Grande y Ronda de 12) vale la de más puntos,
+   sin que el jugador elija.
+
+## Ganar
+
+La partida se acaba en el instante en que un equipo llega a la meta, incluso
+a mitad de mano. Si al cerrar la mano dos equipos la cruzan a la vez con el
+**mismo** puntaje, no hay ganador y se juega otra mano: hay que ganar por
+delante.
